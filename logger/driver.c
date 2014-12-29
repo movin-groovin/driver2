@@ -111,6 +111,7 @@ void AddStringToLogBuf(const char *kernSpaceStr) {
 	}
 	mutex_unlock(&g_logBuffLock);
 	
+	
 	return;
 }
 
@@ -155,7 +156,10 @@ char* GetNameFlagsModeByString(
 	if (size < minSize)
 		return NULL;
 	
-	bufSize = strlen_user(fileNameInUS);
+	if ((bufSize = strlen_user(fileNameInUS)) > 2 * PATH_MAX) {
+		printk("Too long filename from usermode\n");
+		return NULL;
+	}
 	if (NULL == (bufMemory = kmalloc(bufSize + 16, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
 		printk ("Error of kmalloc, ret value: %p; File: %s; Line: %d\n", bufMemory, __FILE__, __LINE__);
@@ -547,7 +551,7 @@ void RewriteSystemServiceTable(void) {
 }
 
 
-void ResoreSystemServiceTable(void) {
+void RestoreSystemServiceTable(void) {
 	DATA_FN dat = {g_sysCallTable};
 	
 	for (int i = 0; i < NUMBER_OF_FUNCTIONS; ++i) {
@@ -712,7 +716,7 @@ void stop (void) {
 #ifdef MY_OWN_DEBUG
 	printk ("Unloading start\n");
 #endif
-	ResoreSystemServiceTable();
+	RestoreSystemServiceTable();
 	WaitServicesTermination();
 	WaitLoggerThreadTermination();
 	CloseFiles();
