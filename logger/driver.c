@@ -16,7 +16,8 @@ struct file *g_logFile;
 struct task_struct *g_loggerTask;
 atomic_t g_stopLogTask;
 const char *g_logFileName = "/tmp/logger_driver.log";//"/var/log/logger_driver.log";
-const int g_secWriteAtTime = 1;
+const int g_secWriteAtTime = 1 * HZ;
+const int g_secWait = 5 * HZ;
 
 // ==============================================
 // ============ Service functions ===============
@@ -580,22 +581,43 @@ void WaitServicesTermination(void) {
 		    atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls)
 		);
 #endif
-		schedule_timeout (5 * HZ);
+		schedule_timeout (g_secWait);
 	}
 	// For escaping of race unload driver condition (and of course this situation can happen)
 	// To unload the driver is rather unsafable
-	schedule_timeout (5 * HZ);
+	set_current_state (TASK_INTERRUPTIBLE);
+	schedule_timeout (g_secWait);
 	
 	return;
 }
 
 
 int LoggerThread(void *data) {
-	// int val = 0;
+	size_t ret;
 	
 	while (!atomic_read(&g_stopLogTask)) {
-		//
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(g_secWriteAtTime);
+		
+		mutex_lock(&g_logBuffLock);
+		if ((ret = WriteDataToFile (g_logFile, g_logBuffer, g_logBufSize)) < 0) {
+			printk ("Error of WriteDataToFile, ret: %016zX; File: %s, Line: %d\n", ret, __FILE__, __LINE__);
+		}
+		g_logBufSize = 0;
+		mutex_unlock(&g_logBuffLock);
 	}
+	
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(g_secWriteAtTime);
+	
+	mutex_lock(&g_logBuffLock);
+	if ((ret = WriteDataToFile (g_logFile, g_logBuffer, g_logBufSize)) < 0) {
+		printk ("Error of WriteDataToFile, ret: %016zX; File: %s, Line: %d\n", ret, __FILE__, __LINE__);
+	}
+	g_logBufSize = 0;
+	mutex_unlock(&g_logBuffLock);
+	
+	atomic_set(&g_stopLogTask, 0);
 	
 	return 0;
 }
@@ -605,6 +627,12 @@ void WaitLoggerThreadTermination(void) {
 	// int val = 0;
 	
 	atomic_set(&g_stopLogTask, 1);
+	while (atomic_read(&g_stopLogTask)) {
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(g_secWait);
+	}
+	set_current_state(TASK_INTERRUPTIBLE);
+	schedule_timeout(g_secWait);
 	
 	return;
 }
