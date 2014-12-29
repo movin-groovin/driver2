@@ -9,8 +9,8 @@ void *g_sysCallTable;
 struct cpumask *g_cpusMask;
 char *g_logBuffer;
 size_t g_logBufSize;
-const size_t g_maxLogBufSize = 10 * (1024 * 1024);
-const size_t g_limitWriteFileSize = 8 * (1024 * 1024);
+const size_t g_maxLogBufSize = 1 * (1024 * 1024);
+const size_t g_limitWriteFileSize = 1 * (1024 * 1024) - 64 * 1024;
 struct mutex g_logBuffLock;
 struct file *g_logFile;
 struct task_struct *g_loggerTask;
@@ -32,9 +32,9 @@ char* GetProcessPidEuidEgid(char *ksMem, size_t size) {
 	
 	if (size < minSize)
 		return NULL;
-	ret = sprintf(ksMem, "pid: %d; ", current->tgid);
+	ret = sprintf(ksMem, "pid: %d, ", current->tgid);
 	ret = sprintf(ksMem + ret, "euid: %d, egid: %d\n", current_euid(), current_egid());
-	sprintf(ksMem + ret, "\n");
+	sprintf(ksMem + strlen(ksMem), "\n");
 	
 	return ksMem;
 }
@@ -63,7 +63,7 @@ char* GetFilenameByFd(int fd, char *ksMem, size_t size) {
 	}
 	
 	retPtr = d_path(&procFile->f_path, fileName, PATH_MAX * 2 - 1 * 2);
-	sprintf(ksMem, "%s; ", retPtr ? retPtr : "can't get file name");
+	sprintf(ksMem, "%s; ", IS_ERR(retPtr) ? "can't get file name" : retPtr);
 	
 	kfree(fileName);
 	fput(procFile);
@@ -295,9 +295,9 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 	if (g_sysServArr[SYS_OPEN_NUM].sysPtrOld) {
 		ret = ((OPEN_P)(g_sysServArr[SYS_OPEN_NUM].sysPtrOld)) (fileName, flags, mode);
 #ifdef MY_OWN_DEBUG
-		printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
+		//printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
 #endif
-		PutToBufferOpenParams(fileName, flags, mode);
+		//PutToBufferOpenParams(fileName, flags, mode);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
 		
@@ -326,9 +326,9 @@ int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 	if (g_sysServArr[SYS_OPENAT_NUM].sysPtrOld) {
 		ret = ((OPENAT_P)(g_sysServArr[SYS_OPENAT_NUM].sysPtrOld)) (dfd, fileName, flags, mode);
 #ifdef MY_OWN_DEBUG
-		printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
+		//printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
 #endif
-		PutToBufferOpenatParams(dfd, fileName, flags, mode);
+		//PutToBufferOpenatParams(dfd, fileName, flags, mode);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
 		
@@ -358,9 +358,9 @@ ssize_t NewWrite (unsigned int fd, const char *buf, size_t count) {
 	if (g_sysServArr[SYS_WRITE_NUM].sysPtrOld) {
 		ret = ((WRITE_P)(g_sysServArr[SYS_WRITE_NUM].sysPtrOld)) (fd, buf, count);
 #ifdef MY_OWN_DEBUG
-		printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
+		//printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
 #endif
-		PutToBufferReadWriteParams("Write call at file", fd);
+		//PutToBufferReadWriteParams("Write call at file", fd);
 		
 		atomic64_dec (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
 		
@@ -390,7 +390,7 @@ ssize_t NewRead (unsigned int fd, char *buf, size_t count) {
 	if (g_sysServArr[SYS_READ_NUM].sysPtrOld) {
 		ret = ((READ_P)(g_sysServArr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
 #ifdef MY_OWN_DEBUG
-		printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
+		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
 #endif
 		PutToBufferReadWriteParams("Read call at file", fd);
 		
@@ -661,21 +661,24 @@ void InitLocks(void) {
 	return;
 }
 
-void* OpenFiles(void) {
+void* OpenFile(const char *fileName) {
 	void *ptr;
 	
-	ptr = filp_open(g_logFileName, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRGRP | S_IROTH);
+	ptr = filp_open(
+		fileName,
+		O_WRONLY | O_CREAT | O_TRUNC,
+		S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH
+	);
 	if (IS_ERR(ptr)) {
 		printk("Error of filp_open, ret: %p; File: %s; Line: %d\n", ptr, __FILE__, __LINE__);
 		return ptr;
 	}
-	g_logFile = ptr;
 	
 	return ptr;
 }
 
-void CloseFiles(void) {
-	filp_close(g_logFile, NULL);
+void CloseFile(struct file *file) {
+	filp_close(file, NULL);
 	
 	return;
 }
@@ -696,14 +699,16 @@ int start (void) {
 #endif
 	}
 	
-	if ((retPtr = OpenFiles ())) {
+	if (IS_ERR(retPtr = OpenFile (g_logFileName))) {
 		FreeMemory();
 		return (int)retPtr;
+	} else {
+		g_logFile = retPtr;
 	}
 	InitLocks();
 	retPtr = CreateThread(LoggerThread);
 	if (IS_ERR(retPtr)) {
-		CloseFiles();
+		CloseFile(g_logFile);
 		FreeMemory();
 		return (int)retPtr; 
 	}
@@ -719,7 +724,7 @@ void stop (void) {
 	RestoreSystemServiceTable();
 	WaitServicesTermination();
 	WaitLoggerThreadTermination();
-	CloseFiles();
+	CloseFile(g_logFile);
 	FreeMemory();
 	
 	return;

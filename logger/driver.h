@@ -30,6 +30,8 @@
 #include <linux/kthread.h> // for kthread_run
 
 
+#define MY_OWN_DEBUG
+
 
 #define NUMBER_OF_FUNCTIONS 4
 
