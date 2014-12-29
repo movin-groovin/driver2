@@ -9,8 +9,8 @@ void *g_sysCallTable;
 struct cpumask *g_cpusMask;
 char *g_logBuffer;
 size_t g_logBufSize;
-const size_t g_maxLogBufSize = 1 * (1024 * 1024);
-const size_t g_limitWriteFileSize = 1 * (1024 * 1024) - 64 * 1024;
+const size_t g_maxLogBufSize = MAX_MEM_SIZE;
+const size_t g_limitWriteFileSize = MAX_MEM_SIZE - (128 * 1024);
 struct mutex g_logBuffLock;
 struct file *g_logFile;
 struct task_struct *g_loggerTask;
@@ -51,7 +51,7 @@ char* GetFilenameByFd(int fd, char *ksMem, size_t size) {
 	if (size < needMemSize)
 		return NULL;
 	
-	if (IS_ERR(procFile = fget(fd))) {
+	if (!(procFile = fget(fd))) {
 #ifdef MY_OWN_DEBUG
 		printk ("Error of fget, ret value: %p\n", procFile);
 #endif
@@ -370,7 +370,8 @@ ssize_t NewWrite (unsigned int fd, const char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
 #endif
-		//PutToBufferReadWriteParams("Write call at file", fd);
+		PutToBufferReadWriteParams("Write call at file", fd);
+		//AddStringToLogBuf("Write call at file\n");
 		
 		atomic64_dec (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
 		
@@ -402,7 +403,8 @@ ssize_t NewRead (unsigned int fd, char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
 #endif
-		//PutToBufferReadWriteParams("Read call at file", fd);
+		PutToBufferReadWriteParams("Read call at file", fd);
+		//AddStringToLogBuf("Read call at file\n");
 		
 		atomic64_dec (& g_sysServArr[SYS_READ_NUM].numOfCalls);
 		
@@ -428,18 +430,22 @@ void Fillg_sysServArr (void *SysServTable) {
 	g_sysServArr[SYS_READ_NUM].sysPtrNew = &NewRead;
 	g_sysServArr[SYS_READ_NUM].sysPtrOld = ((void**)SysServTable)[__NR_read];
 	g_sysServArr[SYS_READ_NUM].sysNum = __NR_read;
+	//atomic64_set(&g_sysServArr[SYS_READ_NUM].numOfCalls, 0);
 	
 	g_sysServArr[SYS_WRITE_NUM].sysPtrNew = &NewWrite;
 	g_sysServArr[SYS_WRITE_NUM].sysPtrOld = ((void**)SysServTable)[__NR_write];
 	g_sysServArr[SYS_WRITE_NUM].sysNum = __NR_write;
+	//atomic64_set(&g_sysServArr[SYS_WRITE_NUM].numOfCalls, 0);
 	
 	g_sysServArr[SYS_OPEN_NUM].sysPtrNew = &NewOpen;
 	g_sysServArr[SYS_OPEN_NUM].sysPtrOld = ((void**)SysServTable)[__NR_open];
 	g_sysServArr[SYS_OPEN_NUM].sysNum = __NR_open;
+	//atomic64_set(&g_sysServArr[SYS_OPEN_NUM].numOfCalls, 0);
 	
 	g_sysServArr[SYS_OPENAT_NUM].sysPtrNew = &NewOpenAt;
 	g_sysServArr[SYS_OPENAT_NUM].sysPtrOld = ((void**)SysServTable)[__NR_openat];
 	g_sysServArr[SYS_OPENAT_NUM].sysNum = __NR_openat;
+	//atomic64_set(&g_sysServArr[SYS_OPENAT_NUM].numOfCalls, 0);
 	
 	return;
 }
@@ -591,9 +597,9 @@ void WaitServicesTermination(void) {
 		set_current_state (TASK_INTERRUPTIBLE);
 #ifdef MY_OWN_DEBUG
 		printk ("Waiting, cnt1: %zd, cnt2: %zd, cnt3: %zd, cnt4: %zd\n",
-		    atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls) ||
-		    atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls) ||
-		    atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls) ||
+		    atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls),
+		    atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls),
+		    atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls),
 		    atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls)
 		);
 #endif
