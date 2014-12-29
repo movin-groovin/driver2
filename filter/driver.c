@@ -83,7 +83,6 @@ size_t WriteDataToFile (struct file *fileWriting, const void *buf, size_t count)
 #ifdef MY_OWN_DEBUG
 		printk ("Error of writing at log file, ret: %d\n", (int)ret);
 #endif
-		ret = 0;
 	}
 	set_fs (oldFs);
 	
