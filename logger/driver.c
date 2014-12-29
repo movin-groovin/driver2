@@ -30,11 +30,14 @@ char* GetProcessPidEuidEgid(char *ksMem, size_t size) {
 	const size_t minSize = 128; //64 * 3 * sizeof(size_t);
 	int ret;
 	
-	if (size < minSize)
+	if (size < minSize) {
+#ifdef MY_OWN_DEBUG
+		printk ("Too little buffer, at GetProcessPidEuidEgid");
+#endif
 		return NULL;
+	}
 	ret = sprintf(ksMem, "pid: %d, ", current->tgid);
 	ret = sprintf(ksMem + ret, "euid: %d, egid: %d\n", current_euid(), current_egid());
-	sprintf(ksMem + strlen(ksMem), "\n");
 	
 	return ksMem;
 }
@@ -84,6 +87,7 @@ size_t WriteDataToFile (struct file *fileWriting, const void *buf, size_t count)
 		printk ("Error of writing at log file, ret: %d\n", (int)ret);
 #endif
 	}
+	fileWriting->f_pos = posFile;
 	set_fs (oldFs);
 	
 	return ret;
@@ -99,10 +103,14 @@ void AddStringToLogBuf(const char *kernSpaceStr) {
 	mutex_lock(&g_logBuffLock);
 	if (g_logBufSize + strLen >= g_limitWriteFileSize) {
 		if ((ret = WriteDataToFile(g_logFile, g_logBuffer, g_logBufSize)) < 0) {
+#ifdef MY_OWN_DEBUG
 			printk ("Error of WriteDataToFile, ret: %016zX; File: %s, Line: %d\n", ret, __FILE__, __LINE__);
+#endif
 		}
 		if ((ret = WriteDataToFile(g_logFile, kernSpaceStr, strLen)) < 0) {
+#ifdef MY_OWN_DEBUG
 			printk ("Error of WriteDataToFile, ret: %016zX; File: %s, Line: %d\n", ret, __FILE__, __LINE__);
+#endif
 		}
 		g_logBufSize = 0;
 	} else {
@@ -182,7 +190,7 @@ char* GetCWDOfCurrentProcess(
 )
 {
 	struct path *pwd;
-	char *bufMemory;
+	char *bufMemory, *retDpath;
 	size_t minSize = PATH_MAX * 2 + 256;
 	
 	
@@ -199,8 +207,8 @@ char* GetCWDOfCurrentProcess(
 	path_get(&current->fs->pwd);
 	pwd = &current->fs->pwd;
 	spin_unlock(&current->fs->lock);
-	bufMemory = d_path((const struct path*)(pwd->dentry), bufMemory, minSize);
-	sprintf(ksMem, "Current work directory: %s; ", bufMemory);
+	retDpath = d_path((const struct path*)(pwd->dentry), bufMemory, minSize);
+	sprintf(ksMem, "Current work directory: %s; ", IS_ERR(retDpath) ? "Cnan't get file's name" : retDpath);
 	
 	path_put(pwd);
 	kfree(bufMemory);
@@ -234,6 +242,7 @@ void PutToBufferOpenParams(
 		bufMemory + strlen(prefStr),
 		needLength - strlen(prefStr)
 	);
+	GetProcessPidEuidEgid(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory));
 	AddStringToLogBuf(bufMemory);
 	
 	kfree(bufMemory);
@@ -271,6 +280,7 @@ void PutToBufferOpenatParams(
 		bufMemory + strlen(bufMemory),
 		needLength - strlen(bufMemory)
 	);
+	GetProcessPidEuidEgid(bufMemory + strlen(bufMemory), needLength- strlen(bufMemory));
 	AddStringToLogBuf(bufMemory);
 	
 	kfree(bufMemory);
@@ -297,7 +307,7 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
 #endif
-		//PutToBufferOpenParams(fileName, flags, mode);
+		PutToBufferOpenParams(fileName, flags, mode);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
 		
@@ -328,7 +338,7 @@ int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
 #endif
-		//PutToBufferOpenatParams(dfd, fileName, flags, mode);
+		PutToBufferOpenatParams(dfd, fileName, flags, mode);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
 		
@@ -392,7 +402,7 @@ ssize_t NewRead (unsigned int fd, char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
 #endif
-		PutToBufferReadWriteParams("Read call at file", fd);
+		//PutToBufferReadWriteParams("Read call at file", fd);
 		
 		atomic64_dec (& g_sysServArr[SYS_READ_NUM].numOfCalls);
 		
@@ -488,6 +498,9 @@ int InitMemory(void) {
 	memset (g_sysServArr, 0, NUMBER_OF_FUNCTIONS * sizeof (SYSSERV_INF));
 	
 	if (!(g_logBuffer = kmalloc (g_maxLogBufSize, GFP_KERNEL))) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error of kmalloc, ret: %016zX; File: %s; Line: %d\n", g_logBuffer, __FILE__, __LINE__);
+#endif
 		kfree(g_sysServArr);
 		kfree(g_cpusMask);
 		return -ENOMEM;
@@ -577,7 +590,7 @@ void WaitServicesTermination(void) {
 	{
 		set_current_state (TASK_INTERRUPTIBLE);
 #ifdef MY_OWN_DEBUG
-		printk ("Waiting, read cnt: %ld, readdir cnt: %ld\n",
+		printk ("Waiting, cnt1: %zd, cnt2: %zd, cnt3: %zd, cnt4: %zd\n",
 		    atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls) ||
 		    atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls) ||
 		    atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls) ||
