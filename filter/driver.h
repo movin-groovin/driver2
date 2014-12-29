@@ -20,7 +20,7 @@
 #include <linux/fs_struct.h> // for fs_struct from task_struct
 #include <linux/sched.h> // struct task_struct
 
-#include <linux/file.h>
+#include <linux/file.h> // fget/fput/struct file
 #include <linux/syscalls.h>
 #include <linux/completion.h>
 #include <linux/kernel.h> // simple_strtoul
@@ -30,6 +30,8 @@
 #include <linux/kthread.h> // for kthread_run
 
 
+#define MY_OWN_DEBUG
+
 
 #define NUMBER_OF_FUNCTIONS 4
 
@@ -37,6 +39,8 @@
 #define SYS_WRITE_NUM 1
 #define SYS_OPEN_NUM 2
 #define SYS_OPENAT_NUM 3
+
+#define MAX_MEM_SIZE (2 * 1024 * 1024)
 
 
 typedef long (*READ_P)(unsigned int fd, char *buf, size_t count);
