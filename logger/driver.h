@@ -28,6 +28,8 @@
 #include <asm/param.h> // HZ value
 
 #include <linux/kthread.h> // for kthread_run
+#include <linux/sem.h> // semaphores
+#include <linux/mm_types.h> // mm_struct
 
 
 #define MY_OWN_DEBUG
@@ -64,22 +66,6 @@ typedef struct _SYSSERV_INFO {
 } SYSSERV_INF, *PSYSSERV_INF;
 
 
-
-/*
-char *pathname,*p;
-mm = current->mm;
-if (mm) {
-    down_read(&mm->mmap_sem);
-    if (mm->exe_file) {
-                pathname = kmalloc(PATH_MAX, GFP_ATOMIC);
-                if (pathname) {
-                      p = d_path(&mm->exe_file->f_path, pathname, PATH_MAX);
-                    //Now you have the path name of exe in p
-                }
-            }
-    up_read(&mm->mmap_sem);
-}
-*/
 
 
 

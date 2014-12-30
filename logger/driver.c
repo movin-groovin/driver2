@@ -26,18 +26,96 @@ const int g_secWait = 5 * HZ;
 //
 // ks is kernal space
 //
-char* GetProcessPidEuidEgid(char *ksMem, size_t size) {
+char* GetCurrentProcessPidEuidEgid(char *ksMem, size_t size) {
 	const size_t minSize = 128; //64 * 3 * sizeof(size_t);
 	int ret;
 	
 	if (size < minSize) {
 #ifdef MY_OWN_DEBUG
-		printk ("Too little buffer, at GetProcessPidEuidEgid");
+		printk ("Too little buffer, at GetCurrentProcessPidEuidEgid\n");
 #endif
 		return NULL;
 	}
 	ret = sprintf(ksMem, "pid: %d, ", current->tgid);
-	ret = sprintf(ksMem + ret, "euid: %d, egid: %d\n", current_euid(), current_egid());
+	ret = sprintf(ksMem + ret, "euid: %d, egid: %d", current_euid(), current_egid());
+	
+	return ksMem;
+}
+
+char *GetStatus(
+	char *ksMem,
+	size_t size,
+	long ret
+)
+{
+	size_t minSize = 64;
+	
+	ksMem[0] = '\0';
+	if (size < minSize) {
+#ifdef MY_OWN_DEBUG
+		printk ("Too little buffer, at GetStatus\n");
+#endif
+		return NULL;
+	}
+	
+	if (IS_ERR((void*)ret)) {
+		sprintf(ksMem, "%s, ret: %p", "error", (void*)ret);
+	} else {
+		sprintf(ksMem, "%s, ret: %p", "success", (void*)ret);
+	}
+	
+	return ksMem;
+}
+
+char* GetProcessExeFile(
+	char *ksMem,
+	size_t size,
+	struct task_struct *task
+)
+{
+	size_t minSize = 2 * PATH_MAX + 1 * 2;
+	struct mm_struct *m_task;
+	char *exeName, *retPtr;
+	struct file *exeFile;
+	
+	
+	ksMem[0] = '\0';
+	if (size < minSize) {
+#ifdef MY_OWN_DEBUG
+		printk ("Too little buffer, at GetProcessExeFile\n");
+#endif
+		return NULL;
+	}
+	
+	if (!(m_task = task->mm)) {
+#ifdef MY_OWN_DEBUG
+		printk ("Mm of current task_struct is NULL\n");
+#endif
+		return NULL;
+	}
+	
+	if (!(exeName = kmalloc(minSize, GFP_KERNEL))) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error of kmalloc, ret value: %p; File: %s; Line: %d\n", exeName, __FILE__, __LINE__);
+#endif
+		return NULL;
+	}
+	
+	down_read(&m_task->mmap_sem);
+	if (!(exeFile = m_task->exe_file)) {
+#ifdef MY_OWN_DEBUG
+		printk ("Exe file in mm of current task_struct is NULL\n");
+#endif
+		up_read(&m_task->mmap_sem);
+		kfree(exeName);
+		return NULL;
+	}
+	retPtr = d_path(&exeFile->f_path, exeName, minSize);
+	sprintf(ksMem, "exec file: %s", IS_ERR(retPtr) ? "can't get file name" : retPtr);
+	up_read(&m_task->mmap_sem);
+	
+	kfree(exeName);
+	
 	
 	return ksMem;
 }
@@ -66,7 +144,7 @@ char* GetFilenameByFd(int fd, char *ksMem, size_t size) {
 	}
 	
 	retPtr = d_path(&procFile->f_path, fileName, PATH_MAX * 2 - 1 * 2);
-	sprintf(ksMem, "%s; ", IS_ERR(retPtr) ? "can't get file name" : retPtr);
+	sprintf(ksMem, "%s", IS_ERR(retPtr) ? "can't get file name" : retPtr);
 	
 	kfree(fileName);
 	fput(procFile);
@@ -123,10 +201,15 @@ void AddStringToLogBuf(const char *kernSpaceStr) {
 	return;
 }
 
-void PutToBufferReadWriteParams(const char *prefString, unsigned int fd) {
+void PutToBufferReadWriteParams(
+	const char *prefString,
+	unsigned int fd,
+	long ret
+)
+{
 	char *logStr;
-	size_t strSize = 3 * PATH_MAX;
-	int ret;
+	size_t strSize = 5 * PATH_MAX;
+	int retNum;
 	
 	
 	BUG_ON(prefString == NULL);
@@ -137,9 +220,15 @@ void PutToBufferReadWriteParams(const char *prefString, unsigned int fd) {
 #endif
 		return;
 	}
-	ret = sprintf(logStr, "%s: ", prefString);
-	GetFilenameByFd(fd, logStr + ret, strSize - ret);
-	GetProcessPidEuidEgid(logStr + strlen(logStr), strSize - strlen(logStr));
+	retNum = sprintf(logStr, "%s: ", prefString);
+	GetFilenameByFd(fd, logStr + retNum, strSize - retNum);
+	strcat(logStr, "; ");
+	GetProcessExeFile(logStr + strlen(logStr), strSize - strlen(logStr), current);
+	strcat(logStr, "; ");
+	GetCurrentProcessPidEuidEgid(logStr + strlen(logStr), strSize - strlen(logStr));
+	strcat(logStr, "; ");
+	GetStatus(logStr + strlen(logStr), strSize - strlen(logStr), ret);
+	strcat(logStr, "\n");
 	AddStringToLogBuf(logStr);
 	
 	kfree(logStr);
@@ -176,7 +265,7 @@ char* GetNameFlagsModeByString(
 	}
 	copy_from_user(bufMemory, fileNameInUS, bufSize);
 	bufMemory[bufSize] = '\0';
-	sprintf(ksMem, "file: %s, flags: %08X, mode: %08X; ", bufMemory, flags, mode);
+	sprintf(ksMem, "file: %s, flags: %08X, mode: %08X", bufMemory, flags, mode);
 	
 	kfree(bufMemory);
 	
@@ -199,7 +288,7 @@ char* GetCWDOfCurrentProcess(
 	
 	if ((bufMemory = kmalloc(minSize, GFP_KERNEL)) == NULL) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret: %p; File: %s; Line: %s\n", bufMemory, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", bufMemory, __FILE__, __LINE__);
 #endif
 		return NULL;
 	}
@@ -208,7 +297,7 @@ char* GetCWDOfCurrentProcess(
 	pwd = &current->fs->pwd;
 	spin_unlock(&current->fs->lock);
 	retDpath = d_path((const struct path*)(pwd->dentry), bufMemory, minSize);
-	sprintf(ksMem, "Current work directory: %s; ", IS_ERR(retDpath) ? "Cnan't get file's name" : retDpath);
+	sprintf(ksMem, "current work directory: %s", IS_ERR(retDpath) ? "can't get file's name" : retDpath);
 	
 	path_put(pwd);
 	kfree(bufMemory);
@@ -220,17 +309,18 @@ char* GetCWDOfCurrentProcess(
 void PutToBufferOpenParams(
 	const char *fileName,
 	int flags,
-	umode_t mode
+	umode_t mode,
+	long ret
 )
 {
 	char *bufMemory;
-	size_t needLength = 3 * PATH_MAX;
+	size_t needLength = 5 * PATH_MAX;
 	const char *prefStr = "Opening a ";
 	
 	
 	if (NULL == (bufMemory = kmalloc(needLength, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret: %p; File: %s; Line: %s\n", bufMemory, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", bufMemory, __FILE__, __LINE__);
 #endif
 		return;
 	}
@@ -242,7 +332,13 @@ void PutToBufferOpenParams(
 		bufMemory + strlen(prefStr),
 		needLength - strlen(prefStr)
 	);
-	GetProcessPidEuidEgid(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory));
+	strcat(bufMemory, "; ");
+	GetProcessExeFile(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory), current);
+	strcat(bufMemory, "; ");
+	GetCurrentProcessPidEuidEgid(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory));
+	strcat(bufMemory, "; ");
+	GetStatus(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory), ret);
+	strcat(bufMemory, "\n");
 	AddStringToLogBuf(bufMemory);
 	
 	kfree(bufMemory);
@@ -255,24 +351,28 @@ void PutToBufferOpenatParams(
 	int dfd,
 	const char *fileName,
 	int flags,
-	umode_t mode
+	umode_t mode,
+	long ret
 )
 {
 	char *bufMemory;
-	size_t needLength = 4 * PATH_MAX + 256;
+	size_t needLength = 7 * PATH_MAX;
+	const char *prefStr = "Openat call from: ";
 	
 	
 	if (NULL == (bufMemory = kmalloc(needLength, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret: %p; File: %s; Line: %s\n", bufMemory, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", bufMemory, __FILE__, __LINE__);
 #endif
 		return;
 	}
+	
+	strcpy(bufMemory, prefStr);
 	if (dfd == AT_FDCWD)
 		GetCWDOfCurrentProcess(bufMemory, needLength);
 	else
 		GetFilenameByFd(dfd, bufMemory, needLength);
-	
+	strcat(bufMemory, "; ");
 	GetNameFlagsModeByString(
 		fileName,
 		flags,
@@ -280,7 +380,13 @@ void PutToBufferOpenatParams(
 		bufMemory + strlen(bufMemory),
 		needLength - strlen(bufMemory)
 	);
-	GetProcessPidEuidEgid(bufMemory + strlen(bufMemory), needLength- strlen(bufMemory));
+	strcat(bufMemory, "; ");
+	GetProcessExeFile(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory), current);
+	strcat(bufMemory, "; ");
+	GetCurrentProcessPidEuidEgid(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory));
+	strcat(bufMemory, "; ");
+	GetStatus(bufMemory + strlen(bufMemory), needLength - strlen(bufMemory), ret);
+	strcat(bufMemory, "\n");
 	AddStringToLogBuf(bufMemory);
 	
 	kfree(bufMemory);
@@ -294,7 +400,7 @@ void PutToBufferOpenatParams(
 // ===========================================
 
 int NewOpen (const char *fileName, int flags, umode_t mode) {
-	int ret;
+	long ret;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -307,7 +413,7 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
 #endif
-		PutToBufferOpenParams(fileName, flags, mode);
+		PutToBufferOpenParams(fileName, flags, mode, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
 		
@@ -325,7 +431,7 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 	// return;
 }
 int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
-	int ret;
+	long ret;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -338,7 +444,7 @@ int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
 #endif
-		PutToBufferOpenatParams(dfd, fileName, flags, mode);
+		PutToBufferOpenatParams(dfd, fileName, flags, mode, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
 		
@@ -356,8 +462,8 @@ int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 	// return;
 }
 
-ssize_t NewWrite (unsigned int fd, const char *buf, size_t count) {
-	int ret;
+long NewWrite (unsigned int fd, const char *buf, size_t count) {
+	long ret;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -370,8 +476,7 @@ ssize_t NewWrite (unsigned int fd, const char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
 #endif
-		PutToBufferReadWriteParams("Write call at file", fd);
-		//AddStringToLogBuf("Write call at file\n");
+		PutToBufferReadWriteParams("Write call at file", fd, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
 		
@@ -389,8 +494,8 @@ ssize_t NewWrite (unsigned int fd, const char *buf, size_t count) {
 	// return;
 }
 
-ssize_t NewRead (unsigned int fd, char *buf, size_t count) {
-	int ret;
+long NewRead (unsigned int fd, char *buf, size_t count) {
+	long ret;
 	
 	
 #ifdef MY_OWN_DEBUG
@@ -403,8 +508,7 @@ ssize_t NewRead (unsigned int fd, char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
 #endif
-		PutToBufferReadWriteParams("Read call at file", fd);
-		//AddStringToLogBuf("Read call at file\n");
+		PutToBufferReadWriteParams("Read call at file", fd, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_READ_NUM].numOfCalls);
 		
@@ -487,7 +591,7 @@ int InitMemory(void) {
 	
 	if (!(g_cpusMask = kmalloc (sizeof (struct cpumask), GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret: %016zX; File: %s; Line: %d\n", g_cpusMask, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", g_cpusMask, __FILE__, __LINE__);
 #endif
 		return -ENOMEM;
 	}
@@ -496,7 +600,7 @@ int InitMemory(void) {
 	
 	if (!(g_sysServArr = kmalloc (NUMBER_OF_FUNCTIONS * sizeof (SYSSERV_INF), GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret: %016zX; File: %s; Line: %d\n", g_sysServArr, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", g_sysServArr, __FILE__, __LINE__);
 #endif
 		kfree (g_cpusMask);
 		return -ENOMEM;
@@ -505,7 +609,7 @@ int InitMemory(void) {
 	
 	if (!(g_logBuffer = kmalloc (g_maxLogBufSize, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret: %016zX; File: %s; Line: %d\n", g_logBuffer, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", g_logBuffer, __FILE__, __LINE__);
 #endif
 		kfree(g_sysServArr);
 		kfree(g_cpusMask);
