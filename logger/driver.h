@@ -65,7 +65,21 @@ typedef struct _SYSSERV_INFO {
 
 
 
-
+/*
+char *pathname,*p;
+mm = current->mm;
+if (mm) {
+    down_read(&mm->mmap_sem);
+    if (mm->exe_file) {
+                pathname = kmalloc(PATH_MAX, GFP_ATOMIC);
+                if (pathname) {
+                      p = d_path(&mm->exe_file->f_path, pathname, PATH_MAX);
+                    //Now you have the path name of exe in p
+                }
+            }
+    up_read(&mm->mmap_sem);
+}
+*/
 
 
 
