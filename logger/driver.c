@@ -18,6 +18,14 @@ atomic_t g_stopLogTask;
 const char *g_logFileName = "/tmp/logger_driver.log";//"/var/log/logger_driver.log";
 const int g_secWriteAtTime = 1 * HZ;
 const int g_secWait = 5 * HZ;
+IOCTL_INTERFACE g_ioctlData;
+struct file_operations g_fopsQuery = {
+	.owner = THIS_MODULE,
+	.open = &ioctlOpen,
+	.release = &ioctlClose,
+	.unlocked_ioctl = &ioctlIoctl
+};
+LOGCHECK_RULES g_logRules;
 
 // ==============================================
 // ============ Service functions ===============
@@ -73,7 +81,7 @@ char* GetProcessExeFile(
 	struct task_struct *task
 )
 {
-	size_t minSize = 2 * PATH_MAX + 1 * 2;
+	size_t minSize = 2 * PATH_MAX + 128;
 	struct mm_struct *m_task;
 	char *exeName, *retPtr;
 	struct file *exeFile;
@@ -254,7 +262,9 @@ char* GetNameFlagsModeByString(
 		return NULL;
 	
 	if ((bufSize = strlen_user(fileNameInUS)) > 2 * PATH_MAX) {
+#ifdef MY_OWN_DEBUG
 		printk("Too long filename from usermode\n");
+#endif
 		return NULL;
 	}
 	if (NULL == (bufMemory = kmalloc(bufSize + 16, GFP_KERNEL))) {
@@ -395,6 +405,14 @@ void PutToBufferOpenatParams(
 	return;
 }
 
+int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr) {
+	
+	// down_read(&chkLogRulesPtr->syncRules);
+	// up_read(&chkLogRulesPtr->syncRules);
+	
+	return 1;
+}
+
 // ===========================================
 // ============= System services =============
 // ===========================================
@@ -413,7 +431,8 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
 #endif
-		PutToBufferOpenParams(fileName, flags, mode, ret);
+		if (CheckLogRules (&g_logRules))
+			PutToBufferOpenParams(fileName, flags, mode, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
 		
@@ -444,7 +463,8 @@ int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
 #endif
-		PutToBufferOpenatParams(dfd, fileName, flags, mode, ret);
+		if (CheckLogRules (&g_logRules))
+			PutToBufferOpenatParams(dfd, fileName, flags, mode, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
 		
@@ -476,7 +496,8 @@ long NewWrite (unsigned int fd, const char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
 #endif
-		PutToBufferReadWriteParams("Write call at file", fd, ret);
+		if (CheckLogRules (&g_logRules))
+			PutToBufferReadWriteParams("Write call at file", fd, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
 		
@@ -508,7 +529,8 @@ long NewRead (unsigned int fd, char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
 #endif
-		PutToBufferReadWriteParams("Read call at file", fd, ret);
+		if (CheckLogRules (&g_logRules))
+			PutToBufferReadWriteParams("Read call at file", fd, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_READ_NUM].numOfCalls);
 		
@@ -806,6 +828,131 @@ void CloseFile(struct file *file) {
 	return;
 }
 
+int RegisterDevice (PIOCTL_INTERFACE iocDataPtr) {
+	int ret;
+	struct device *devPtr;
+	
+	if ((ret = alloc_chrdev_region(&iocDataPtr->majMinNum, FIRST_MINOR, MINOR_CNT, "driver_one_driver")) < 0)
+	{
+#ifdef MY_OWN_DEBUG
+		printk("Error of alloc_chrdev_region, ret: %d\n", ret);
+#endif
+		return 0;
+	}
+	cdev_init(&iocDataPtr->charDevice, &g_fopsQuery);
+	if ((ret = cdev_add(&iocDataPtr->charDevice, iocDataPtr->majMinNum, MINOR_CNT)) < 0)
+	{
+#ifdef MY_OWN_DEBUG
+		printk("Error of cdev_add, ret: %d\n", ret);
+#endif
+		return 0;
+	}
+	
+	if (IS_ERR(iocDataPtr->devClassPtr = class_create(THIS_MODULE, "char_class")))
+	{
+#ifdef MY_OWN_DEBUG
+		printk("Error of class_create, ret: %p\n", iocDataPtr->devClassPtr);
+#endif
+		cdev_del(&iocDataPtr->charDevice);
+		unregister_chrdev_region(iocDataPtr->majMinNum, MINOR_CNT);
+		return 0;
+	}
+	if (IS_ERR(devPtr = device_create(iocDataPtr->devClassPtr, NULL, iocDataPtr->majMinNum, NULL, "logger_driver")))
+	{
+#ifdef MY_OWN_DEBUG
+		printk("Error of device_create, ret: %p\n", devPtr);
+#endif
+		class_destroy(iocDataPtr->devClassPtr);
+		cdev_del(&iocDataPtr->charDevice);
+		unregister_chrdev_region(iocDataPtr->majMinNum, MINOR_CNT);
+		return 0;
+	}
+	
+	return 1;
+}
+
+void UnregisterDevice (PIOCTL_INTERFACE iocDataPtr) {
+	device_destroy(iocDataPtr->devClassPtr, iocDataPtr->majMinNum);
+	class_destroy(iocDataPtr->devClassPtr);
+	cdev_del(&iocDataPtr->charDevice);
+	unregister_chrdev_region(iocDataPtr->majMinNum, MINOR_CNT);
+	
+	return;
+}
+
+int ioctlOpen (struct inode *i, struct file *f) {
+	return 0;
+}
+
+int ioctlClose (struct inode *i, struct file *f) {
+	return 0;
+}
+
+long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
+	// int val;
+	
+	
+	down_write(&g_logRules.syncRules);
+	
+	switch(cmd) {
+		case EXCLUDE_PID:
+			break;
+		
+		case INCLUDE_PID:
+			break;
+		
+		case STOP_LOGGING:
+			break;
+		
+		case CLEAR_RULES:
+			break;
+		
+		case DELETE_FROM_EXCLUDE:
+			break;
+		
+		case DELETE_FROM_INCLUDE:
+			break;
+		
+		default:
+			up_write(&g_logRules.syncRules);
+			return -EINVAL;
+	}
+	
+	up_write(&g_logRules.syncRules);
+	
+	
+	return 0;
+}
+
+void InitLoggingRules(PLOGCHECK_RULES logChkRulesPtr) {
+	init_rwsem(&logChkRulesPtr->syncRules);
+	
+	logChkRulesPtr->excHead.onOf = 0;
+	logChkRulesPtr->excHead.num = 0;
+	INIT_LIST_HEAD(&logChkRulesPtr->excHead.head);
+	
+	logChkRulesPtr->incHead.onOf = 0;
+	logChkRulesPtr->incHead.num = 0;
+	INIT_LIST_HEAD(&logChkRulesPtr->incHead.head);
+	
+	return;
+}
+
+void ReleaseLoggingRules(PLOGCHECK_RULES logChkRulesPtr) {
+	struct RULES_ENTRY *next, *cur;
+	
+	down_write(&logChkRulesPtr->syncRules);
+	list_for_each_entry_safe(cur, next, &logChkRulesPtr->excHead.head, list) {
+		kfree(cur);
+	}
+	list_for_each_entry_safe(cur, next, &logChkRulesPtr->incHead.head, list) {
+		kfree(cur);
+	}
+	up_write(&logChkRulesPtr->syncRules);
+	
+	return;
+}
+
 
 int start (void) {
 	void *retPtr;
@@ -835,6 +982,13 @@ int start (void) {
 		FreeMemory();
 		return (int)retPtr; 
 	}
+	InitLoggingRules(&g_logRules);
+	if (!RegisterDevice (&g_ioctlData)) {
+		WaitLoggerThreadTermination();
+		CloseFile(g_logFile);
+		FreeMemory();
+		return -ENOMEM; 
+	}
 	RewriteSystemServiceTable();
 	
 	return 0;
@@ -846,6 +1000,8 @@ void stop (void) {
 #endif
 	RestoreSystemServiceTable();
 	WaitServicesTermination();
+	UnregisterDevice(&g_ioctlData);
+	ReleaseLoggingRules(&g_logRules);
 	WaitLoggerThreadTermination();
 	CloseFile(g_logFile);
 	FreeMemory();

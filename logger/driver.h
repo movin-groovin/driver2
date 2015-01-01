@@ -4,39 +4,40 @@
 #include <linux/init.h>
 
 #include <linux/unistd.h>
-#include <linux/stop_machine.h>
-#include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <linux/dirent.h>
+#include <asm/param.h> // HZ value
+#include <linux/list.h>
+
 #include <linux/atomic.h>
-#include <asm/current.h> // current
-#include <linux/fdtable.h> // struct files_struct
 #include <linux/spinlock.h>
 #include <linux/spinlock_types.h>
 #include <linux/mutex.h> // for mutex of course
+#include <linux/sem.h> // semaphores
+#include <linux/rwsem.h>
+
 #include <linux/fs.h> // struct file at line 976
 #include <linux/path.h> // struct path
 #include <linux/dcache.h> // struct dentry
 #include <linux/fs_struct.h> // for fs_struct from task_struct
-#include <linux/sched.h> // struct task_struct
-
 #include <linux/file.h> // fget/fput/struct file
-#include <linux/syscalls.h>
-#include <linux/completion.h>
-#include <linux/kernel.h> // simple_strtoul
-#include <linux/cred.h> // for commit_creds
-#include <asm/param.h> // HZ value
+#include <linux/dirent.h>
 
 #include <linux/kthread.h> // for kthread_run
-#include <linux/sem.h> // semaphores
 #include <linux/mm_types.h> // mm_struct
+#include <linux/sched.h> // struct task_struct
+#include <linux/stop_machine.h>
+#include <linux/slab.h>
+
+#include <linux/cdev.h>
+#include <linux/device.h>
+
+#include "ioctls.h"
 
 
 #define MY_OWN_DEBUG
 
 
 #define NUMBER_OF_FUNCTIONS 4
-
 #define SYS_READ_NUM 0
 #define SYS_WRITE_NUM 1
 #define SYS_OPEN_NUM 2
@@ -44,11 +45,23 @@
 
 #define MAX_MEM_SIZE (2 * 1024 * 1024)
 
+#define FIRST_MINOR 0
+#define MINOR_CNT 1
+
+#define MAX_NUM_RULES 64
+
+
 
 typedef long (*READ_P)(unsigned int fd, char *buf, size_t count);
 typedef long (*WRITE_P)(unsigned int fd, const char *buf, size_t count);
 typedef int (*OPEN_P)(const char *, int, umode_t);
 typedef int (*OPENAT_P)(int, const char *, int, umode_t);
+
+int ioctlOpen (struct inode *i, struct file *f);
+int ioctlClose (struct inode *i, struct file *f);
+long ioctlIoctl (struct file *f, unsigned int cmd, unsigned long arg);
+
+
 
 typedef struct _DATA_FN {
 	void *scltPtr;
@@ -56,7 +69,6 @@ typedef struct _DATA_FN {
 	void *newPtr;
 	void **oldPtr;
 } DATA_FN, *PDATA_FN;
-
 
 typedef struct _SYSSERV_INFO {
 	void *sysPtrNew;
@@ -67,7 +79,31 @@ typedef struct _SYSSERV_INFO {
 
 
 
+typedef struct _IOCTL_INTERFACE {
+	dev_t majMinNum;
+	struct cdev charDevice;
+	struct class *devClassPtr;
+} IOCTL_INTERFACE, *PIOCTL_INTERFACE;
 
+
+
+struct RULES_ENTRY {
+	pid_t pid;
+	struct list_head list;
+};
+
+struct RULES_HEAD {
+	int onOf;
+	int num;
+	struct list_head head;
+};
+
+typedef struct _LOGCHECK_RULES {
+	struct rw_semaphore syncRules;
+	struct RULES_HEAD excHead;
+	struct RULES_HEAD incHead;
+	int stopLogging;
+} LOGCHECK_RULES, *PLOGCHECK_RULES;
 
 
 
