@@ -4,8 +4,8 @@
 
 import sys,\
 	   os,\
-	   fcntl,\
 	   subprocess
+import ioctls
 
 
 
@@ -27,7 +27,8 @@ def GetParameters(params):
 	return (
 		params[1],
 		params[1][0 : len(params[1]) - pref_len],
-		' '.join(params[2:])
+		params[2],
+		' '.join(params[3:])
 	)
 
 
@@ -63,13 +64,15 @@ def CreateChilds(cmds):
 
 
 def main():
-	if len(sys.argv) < 3 or sys.argv[1] == '-h':
-		print "Run so: ./script module_path commands_for_log_processings\n"\
-			  "Example 1: ./logger_console.py /home/user/driver.ko tail -f /tmp/logger_driver.log\n"\
-			  "Example 2: ./logger_console.py /home/user/driver.ko tail -f /tmp/logger_driver.log | grep '.*Read.*'"
+	if len(sys.argv) < 4 or sys.argv[1] == '-h':
+		print "Run so: ./script module_path device_path commands_for_log_processings\n"\
+			  "Example 1: ./logger_console.py /home/user/driver.ko /dev/logger_driver "\
+			  "tail -f /tmp/logger_driver.log\n"\
+			  "Example 2: ./logger_console.py /home/user/driver.ko /dev/logger_driver "\
+			  "tail -f /tmp/logger_driver.log | grep '.*Read.*'"
 		return 1000
 	
-	module_name_pref, module_name, commands = GetParameters(sys.argv)
+	module_name_pref, module_name, dev_name, commands = GetParameters(sys.argv)
 	
 	if not CheckRoot():
 		print "Need run as root"
@@ -80,7 +83,23 @@ def main():
 		print "Can't load module: {}".format(module_name_pref)
 		return 1002
 	
-	CreateChilds(commands)
+	try:
+		fDev = open(dev_name)
+	except IOError as Exc:
+		print "Can't open {}".format(sys.argv[1])
+		print Exc
+		UnloadKernelModule(module_name)
+		return 1003
+	
+	ioctls.SendCommand(fDev, ioctls.STOP_LOGGING)
+	ioctls.SendCommand(fDev, ioctls.TRUNCATE_LOG_FILE)
+	shell_pid, pids = CreateChilds(commands)
+	ioctls.SendCommand(fDev, ioctls.EXCLUDE_PID, shell_pid)
+	for pid in pids:
+		ioctls.SendCommand(fDev, ioctls.EXCLUDE_PID, pid)
+	ioctls.SendCommand(fDev, ioctls.CONTINUE_LOGGING)
+	os.wait(shell_pid)
+	
 	UnloadKernelModule(module_name)
 	
 	

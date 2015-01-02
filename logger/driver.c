@@ -16,6 +16,7 @@ struct file *g_logFile;
 struct task_struct *g_loggerTask;
 atomic_t g_stopLogTask;
 const char *g_logFileName = "/tmp/logger_driver.log";//"/var/log/logger_driver.log";
+const char *g_deviceName = "logger_driver";
 const int g_secWriteAtTime = 1 * HZ;
 const int g_secWait = 5 * HZ;
 IOCTL_INTERFACE g_ioctlData;
@@ -858,6 +859,27 @@ void CloseFile(struct file *file) {
 	return;
 }
 
+int TruncateFile(struct file *filePtr, loff_t len) {
+	struct iattr newAttrs;
+	struct dentry *dentryPtr;
+	int ret;
+	
+	dentryPtr = filePtr->f_path.dentry;
+	if (len < 0)
+		 return -EINVAL;
+
+	newAttrs.ia_size = len;
+	newAttrs.ia_valid = ATTR_SIZE | ATTR_MTIME | ATTR_CTIME;
+	newAttrs.ia_file = filePtr;
+	newAttrs.ia_valid |= ATTR_FILE;
+
+	mutex_lock(&dentryPtr->d_inode->i_mutex);
+	ret = notify_change(dentryPtr, &newAttrs);
+	mutex_unlock(&dentryPtr->d_inode->i_mutex);
+ 
+	return ret;
+}
+
 int RegisterDevice (PIOCTL_INTERFACE iocDataPtr) {
 	int ret;
 	struct device *devPtr;
@@ -887,7 +909,7 @@ int RegisterDevice (PIOCTL_INTERFACE iocDataPtr) {
 		unregister_chrdev_region(iocDataPtr->majMinNum, MINOR_CNT);
 		return 0;
 	}
-	if (IS_ERR(devPtr = device_create(iocDataPtr->devClassPtr, NULL, iocDataPtr->majMinNum, NULL, "logger_driver")))
+	if (IS_ERR(devPtr = device_create(iocDataPtr->devClassPtr, NULL, iocDataPtr->majMinNum, NULL, g_deviceName)))
 	{
 #ifdef MY_OWN_DEBUG
 		printk("Error of device_create, ret: %p\n", devPtr);
@@ -1006,6 +1028,17 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				}
 			}
 			ret = -EINVAL;
+			break;
+			
+		case TRUNCATE_LOG_FILE:
+			ret = TruncateFile(g_logFile, 0);
+			if (ret) {
+#ifdef MY_OWN_DEBUG
+				printk("Error of TruncateFile, ret: %d; File: %s; Line: %d\n", (int)ret, __FILE__, __LINE__);
+#endif
+				up_write(&g_logRules.syncRules);
+				return ret;
+			}
 			break;
 		
 		default:
