@@ -405,10 +405,40 @@ void PutToBufferOpenatParams(
 	return;
 }
 
-int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr) {
+int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr, pid_t pid) {
+	struct RULES_ENTRY *present;
 	
-	// down_read(&chkLogRulesPtr->syncRules);
-	// up_read(&chkLogRulesPtr->syncRules);
+	
+	down_read(&chkLogRulesPtr->syncRules);
+	
+	if (chkLogRulesPtr->stopLogging) // 3 rule
+	{
+		up_read(&chkLogRulesPtr->syncRules);
+		return 0;
+	} else if (chkLogRulesPtr->incHead.onOf) // 2 rule
+	{
+		list_for_each_entry(present, &chkLogRulesPtr->incHead.head, list) {
+			if (present->pid == pid) {
+				up_read(&chkLogRulesPtr->syncRules);
+				return 1;
+			}
+		}
+		up_read(&chkLogRulesPtr->syncRules);
+		return 0;
+	} else if (chkLogRulesPtr->excHead.onOf) // 1 rule
+	{
+		list_for_each_entry(present, &chkLogRulesPtr->excHead.head, list) {
+			if (present->pid == pid) {
+				up_read(&chkLogRulesPtr->syncRules);
+				return 0;
+			}
+		}
+		up_read(&chkLogRulesPtr->syncRules);
+		return 1;
+	}
+	// default rule
+	up_read(&chkLogRulesPtr->syncRules);
+	
 	
 	return 1;
 }
@@ -431,7 +461,7 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
 #endif
-		if (CheckLogRules (&g_logRules))
+		if (CheckLogRules (&g_logRules, current->tgid))
 			PutToBufferOpenParams(fileName, flags, mode, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
@@ -463,7 +493,7 @@ int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
 #endif
-		if (CheckLogRules (&g_logRules))
+		if (CheckLogRules (&g_logRules, current->tgid))
 			PutToBufferOpenatParams(dfd, fileName, flags, mode, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
@@ -496,7 +526,7 @@ long NewWrite (unsigned int fd, const char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
 #endif
-		if (CheckLogRules (&g_logRules))
+		if (CheckLogRules (&g_logRules, current->tgid))
 			PutToBufferReadWriteParams("Write call at file", fd, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
@@ -529,7 +559,7 @@ long NewRead (unsigned int fd, char *buf, size_t count) {
 #ifdef MY_OWN_DEBUG
 		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
 #endif
-		if (CheckLogRules (&g_logRules))
+		if (CheckLogRules (&g_logRules, current->tgid))
 			PutToBufferReadWriteParams("Read call at file", fd, ret);
 		
 		atomic64_dec (& g_sysServArr[SYS_READ_NUM].numOfCalls);
@@ -889,39 +919,103 @@ int ioctlClose (struct inode *i, struct file *f) {
 }
 
 long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
-	// int val;
+	struct RULES_ENTRY *entryPtr;
+	struct RULES_ENTRY *next, *present;
+	long ret = 0;
 	
 	
 	down_write(&g_logRules.syncRules);
 	
 	switch(cmd) {
 		case EXCLUDE_PID:
+			entryPtr = kmalloc(sizeof (struct RULES_ENTRY), GFP_KERNEL);
+			if (!entryPtr) {
+#ifdef MY_OWN_DEBUG
+				printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", entryPtr, __FILE__, __LINE__);
+#endif
+				ret = -ENOMEM;
+			} else {
+				entryPtr->pid = arg;
+				g_logRules.excHead.onOf = 1;
+				g_logRules.excHead.num += 1;
+				list_add(&entryPtr->list, &g_logRules.excHead.head);
+			}
 			break;
 		
 		case INCLUDE_PID:
+			entryPtr = kmalloc(sizeof (struct RULES_ENTRY), GFP_KERNEL);
+			if (!entryPtr) {
+#ifdef MY_OWN_DEBUG
+				printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", entryPtr, __FILE__, __LINE__);
+#endif
+				ret = -ENOMEM;
+			} else {
+				entryPtr->pid = arg;
+				g_logRules.incHead.onOf = 1;
+				g_logRules.incHead.num += 1;
+				list_add(&entryPtr->list, &g_logRules.incHead.head);
+			}
 			break;
 		
 		case STOP_LOGGING:
+			g_logRules.stopLogging = 1;
+			break;
+		
+		case CONTINUE_LOGGING:
+			g_logRules.stopLogging = 0;
 			break;
 		
 		case CLEAR_RULES:
+			g_logRules.stopLogging = 0;
+			
+			list_for_each_entry_safe(present, next, &g_logRules.excHead.head, list) {
+				list_del(&present->list);
+				kfree(present);
+			}
+			g_logRules.excHead.num = 0;
+			g_logRules.excHead.onOf = 0;
+			
+			list_for_each_entry_safe(present, next, &g_logRules.incHead.head, list) {
+				list_del(&present->list);
+				kfree(present);
+			}
+			g_logRules.incHead.num = 0;
+			g_logRules.incHead.onOf = 0;
+			
 			break;
 		
 		case DELETE_FROM_EXCLUDE:
+			list_for_each_entry(present, &g_logRules.excHead.head, list) {
+				if (present->pid == arg) {
+					list_del(&present->list);
+					kfree(present);
+					up_write(&g_logRules.syncRules);
+					return ret;
+				}
+			}
+			ret = -EINVAL;
 			break;
 		
 		case DELETE_FROM_INCLUDE:
+			list_for_each_entry(present, &g_logRules.incHead.head, list) {
+				if (present->pid == arg) {
+					list_del(&present->list);
+					kfree(present);
+					up_write(&g_logRules.syncRules);
+					return ret;
+				}
+			}
+			ret = -EINVAL;
 			break;
 		
 		default:
-			up_write(&g_logRules.syncRules);
-			return -EINVAL;
+			ret = -EINVAL;
 	}
 	
 	up_write(&g_logRules.syncRules);
 	
 	
-	return 0;
+	return ret;
 }
 
 void InitLoggingRules(PLOGCHECK_RULES logChkRulesPtr) {
@@ -943,9 +1037,11 @@ void ReleaseLoggingRules(PLOGCHECK_RULES logChkRulesPtr) {
 	
 	down_write(&logChkRulesPtr->syncRules);
 	list_for_each_entry_safe(cur, next, &logChkRulesPtr->excHead.head, list) {
+		list_del(&cur->list);
 		kfree(cur);
 	}
 	list_for_each_entry_safe(cur, next, &logChkRulesPtr->incHead.head, list) {
+		list_del(&cur->list);
 		kfree(cur);
 	}
 	up_write(&logChkRulesPtr->syncRules);

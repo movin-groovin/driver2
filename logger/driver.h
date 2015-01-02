@@ -93,7 +93,7 @@ struct RULES_ENTRY {
 };
 
 struct RULES_HEAD {
-	int onOf;
+	int onOf; // 1 - on; 0 - off
 	int num;
 	struct list_head head;
 };
