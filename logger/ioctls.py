@@ -22,15 +22,15 @@ TRUNCATE_LOG_FILE = 5007
 
 def SendCommand(fd, cmd, *args):
 	if args:
-		return fcntl.ioctl(fd, cmd)
+		return fcntl.ioctl(fd, int(cmd), int(args[0]))
 	else:
-		return fcntl.ioctl(fd, cmd, args[0])
+		return fcntl.ioctl(fd, int(cmd))
 
 
 
 def main():
 	if len(sys.argv) < 3:
-		print "Enter a device name, cmd number and probably optional parameters like pids or paths"
+		print "Run from root account, so: 'ioctls.py device_name cmd_number [pid]'"
 		return 10001
 	
 	try:

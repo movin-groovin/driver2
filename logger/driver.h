@@ -27,6 +27,7 @@
 #include <linux/sched.h> // struct task_struct
 #include <linux/stop_machine.h>
 #include <linux/slab.h>
+#include <linux/threads.h> // for PID_MAX_LIMIT
 
 #include <linux/cdev.h>
 #include <linux/device.h>

@@ -68,9 +68,9 @@ char *GetStatus(
 	}
 	
 	if (IS_ERR((void*)ret)) {
-		sprintf(ksMem, "%s, ret: %p", "error", (void*)ret);
+		sprintf(ksMem, "%s, ret: %d", "error", -(int)ret);
 	} else {
-		sprintf(ksMem, "%s, ret: %p", "success", (void*)ret);
+		sprintf(ksMem, "%s, ret: %d", "success", (int)ret);
 	}
 	
 	return ksMem;
@@ -306,8 +306,8 @@ char* GetCWDOfCurrentProcess(
 	spin_lock(&current->fs->lock);
 	path_get(&current->fs->pwd);
 	pwd = &current->fs->pwd;
+	retDpath = d_path(pwd, bufMemory, minSize);
 	spin_unlock(&current->fs->lock);
-	retDpath = d_path((const struct path*)(pwd->dentry), bufMemory, minSize);
 	sprintf(ksMem, "current work directory: %s", IS_ERR(retDpath) ? "can't get file's name" : retDpath);
 	
 	path_put(pwd);
@@ -448,7 +448,7 @@ int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr, pid_t pid) {
 // ============= System services =============
 // ===========================================
 
-int NewOpen (const char *fileName, int flags, umode_t mode) {
+long NewOpen (const char *fileName, int flags, umode_t mode) {
 	long ret;
 	
 	
@@ -480,7 +480,7 @@ int NewOpen (const char *fileName, int flags, umode_t mode) {
 	
 	// return;
 }
-int NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
+long NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 	long ret;
 	
 	
@@ -876,6 +876,11 @@ int TruncateFile(struct file *filePtr, loff_t len) {
 	mutex_lock(&dentryPtr->d_inode->i_mutex);
 	ret = notify_change(dentryPtr, &newAttrs);
 	mutex_unlock(&dentryPtr->d_inode->i_mutex);
+	
+#ifdef MY_OWN_DEBUG
+	printk("File position of log file in func TruncateFile: %lld\n", filePtr->f_pos);
+#endif
+	filePtr->f_pos = 0;
  
 	return ret;
 }
@@ -945,6 +950,14 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 	struct RULES_ENTRY *next, *present;
 	long ret = 0;
 	
+	
+	if (
+		(cmd == EXCLUDE_PID || cmd == INCLUDE_PID || 
+			cmd == DELETE_FROM_EXCLUDE || cmd == DELETE_FROM_INCLUDE) && 
+		(arg >= PID_MAX_LIMIT || !arg)
+	) {
+		return -EINVAL;
+	}
 	
 	down_write(&g_logRules.syncRules);
 	
