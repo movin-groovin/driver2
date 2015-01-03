@@ -4,16 +4,15 @@
 
 import sys,\
 	   os,\
-	   subprocess
+	   subprocess,\
+	   time
 import ioctls
 
 
 
 # Global variables
-module_name_pref = 'driver.ko'
-module_name = 'driver'
-device_name = '/dev/logger_driver'
-commands = str()
+module_name_pref = 'logger_driver.ko'
+module_name = 'logger_driver'
 
 
 
@@ -34,64 +33,39 @@ def LoadKernelModule(module_path):
 def UnloadKernelModule(module_name):
 	print ("Unloading the driver: {0}".format(module_name))
 	proc = subprocess.Popen(
-		["/sbin/rmmod ", module_name],
+		["/sbin/rmmod", module_name],
 		stderr = subprocess.PIPE
 	)
 	ret = proc.wait()
 	if ret:
-		msg = "Message from rmmod: '{}'".format(proc.stderr.read()[:])
+		msg = "Message from rmmod: '{}', ret: {}".format(proc.stderr.read(), ret)
 		print msg.replace('\n', '')
 		return False
 	return True
 
 
-def CreateChilds(cmds):
-	proc = subprocess.Popen(
-		cmds,
-		shell = True,
-		stdout = subprocess.PIPE,
-		stderr = subprocess.PIPE
-	)
-	ret = proc.wait()
-	
-	if ret:
-		print ("Error output of subprocess: {}".format(proc.stderr.read()))
-	else:
-		print ("Output of subprocess: {}".format(proc.stdout.read()))
-	
-	return ret
-
-
-
 def main():
-	if len(sys.argv) < 2 or sys.argv[1] == '-h':
-		print "Run so: ./script <commands_for_log_processing>\n"\
-			  "Example 1: ./logger_console.py tail -f /tmp/logger_driver.log\n"\
-			  "Example 2: ./logger_console.py tail -f /tmp/logger_driver.log | grep '.*Read.*'"
-		return 10001
-	
 	if not ioctls.CheckRoot():
 		print "Need run as root"
 		return 10002
-	commands = sys.argv[1:]
 	
 	if not LoadKernelModule(module_name_pref):
 		print "Can't load module: {}".format(module_name_pref)
 		return 10003
 	
 	try:
-		fDev = open(device_name)
+		fDev = open(ioctls.device_name)
 	except IOError as Exc:
-		print "Can't open {}".format(device_name)
+		print "Can't open {}".format(ioctls.device_name)
 		print Exc
 		UnloadKernelModule(module_name)
 		return 10004
 	
 	ioctls.SendCommand(fDev, ioctls.STOP_LOGGING)
+	time.sleep(1)
 	ioctls.SendCommand(fDev, ioctls.TRUNCATE_LOG_FILE)
-	CreateChilds(commands)
 	
-	UnloadKernelModule(module_name)
+	print ("Driver has started")
 	
 	
 	return 0
@@ -103,6 +77,9 @@ if __name__ != '__main__':
 else:
 	try:
 		main()
-	except Exception as Exc:
+	except BaseException as Exc:
 		UnloadKernelModule(module_name)
 		print Exc
+	except:
+		UnloadKernelModule(module_name)
+		print ("Unknown exception")

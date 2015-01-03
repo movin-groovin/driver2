@@ -18,6 +18,8 @@ DELETE_FROM_EXCLUDE = 5005
 DELETE_FROM_INCLUDE = 5006
 TRUNCATE_LOG_FILE = 5007
 device_name = "/dev/logger_driver"
+log_name = "/tmp/logger_driver.log"
+device_name = '/dev/logger_driver'
 
 
 

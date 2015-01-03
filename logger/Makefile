@@ -22,7 +22,7 @@
 # 
 
 CC=gcc -std=gnu99 -g
-obj-m = driver.o
+obj-m = logger_driver.o
 KDIR = /lib/modules/$(shell uname -r)/build
 PWD = $(shell pwd)
 
