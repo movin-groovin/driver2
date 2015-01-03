@@ -10,29 +10,15 @@ import ioctls
 
 
 # Global variables
-pref_len = 3 # '.ko'
-module_name_pref = str()
-module_name = str()
+module_name_pref = 'driver.ko'
+module_name = 'driver'
+device_name = '/dev/logger_driver'
 commands = str()
 
 
 
-def CheckRoot():
-	if os.getuid() == 0:
-		return True
-	return False
-
-
-def GetParameters(params):
-	return (
-		params[1],
-		params[1][0 : len(params[1]) - pref_len],
-		params[2],
-		' '.join(params[3:])
-	)
-
-
 def LoadKernelModule(module_path):
+	print ("Loading the driver: {0}".format(module_name_pref))
 	proc = subprocess.Popen(
 		["/sbin/insmod", module_path],
 		stderr = subprocess.PIPE
@@ -46,6 +32,7 @@ def LoadKernelModule(module_path):
 
 
 def UnloadKernelModule(module_name):
+	print ("Unloading the driver: {0}".format(module_name))
 	proc = subprocess.Popen(
 		["/sbin/rmmod ", module_name],
 		stderr = subprocess.PIPE
@@ -59,46 +46,50 @@ def UnloadKernelModule(module_name):
 
 
 def CreateChilds(cmds):
-	return True
+	proc = subprocess.Popen(
+		cmds,
+		shell = True,
+		stdout = subprocess.PIPE,
+		stderr = subprocess.PIPE
+	)
+	ret = proc.wait()
+	
+	if ret:
+		print ("Error output of subprocess: {}".format(proc.stderr.read()))
+	else:
+		print ("Output of subprocess: {}".format(proc.stdout.read()))
+	
+	return ret
 
 
 
 def main():
-	if len(sys.argv) < 4 or sys.argv[1] == '-h':
-		print "Run so: ./script module_path device_path commands_for_log_processings\n"\
-			  "Example 1: ./logger_console.py /home/user/driver.ko /dev/logger_driver "\
-			  "tail -f /tmp/logger_driver.log\n"\
-			  "Example 2: ./logger_console.py /home/user/driver.ko /dev/logger_driver "\
-			  "tail -f /tmp/logger_driver.log | grep '.*Read.*'"
-		return 1000
+	if len(sys.argv) < 2 or sys.argv[1] == '-h':
+		print "Run so: ./script <commands_for_log_processing>\n"\
+			  "Example 1: ./logger_console.py tail -f /tmp/logger_driver.log\n"\
+			  "Example 2: ./logger_console.py tail -f /tmp/logger_driver.log | grep '.*Read.*'"
+		return 10001
 	
-	module_name_pref, module_name, dev_name, commands = GetParameters(sys.argv)
-	
-	if not CheckRoot():
+	if not ioctls.CheckRoot():
 		print "Need run as root"
-		return 1001
-	
+		return 10002
+	commands = sys.argv[1:]
 	
 	if not LoadKernelModule(module_name_pref):
 		print "Can't load module: {}".format(module_name_pref)
-		return 1002
+		return 10003
 	
 	try:
-		fDev = open(dev_name)
+		fDev = open(device_name)
 	except IOError as Exc:
-		print "Can't open {}".format(sys.argv[1])
+		print "Can't open {}".format(device_name)
 		print Exc
 		UnloadKernelModule(module_name)
-		return 1003
+		return 10004
 	
 	ioctls.SendCommand(fDev, ioctls.STOP_LOGGING)
 	ioctls.SendCommand(fDev, ioctls.TRUNCATE_LOG_FILE)
-	shell_pid, pids = CreateChilds(commands)
-	ioctls.SendCommand(fDev, ioctls.EXCLUDE_PID, shell_pid)
-	for pid in pids:
-		ioctls.SendCommand(fDev, ioctls.EXCLUDE_PID, pid)
-	ioctls.SendCommand(fDev, ioctls.CONTINUE_LOGGING)
-	os.wait(shell_pid)
+	CreateChilds(commands)
 	
 	UnloadKernelModule(module_name)
 	
