@@ -1024,7 +1024,7 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				if (present->pid == arg) {
 					list_del(&present->list);
 					kfree(present);
-					if (g_logRules.excHead.head.next = &g_logRules.excHead.head) {
+					if (g_logRules.excHead.head.next == &g_logRules.excHead.head) {
 						g_logRules.excHead.onOf = 0;
 					}
 					up_write(&g_logRules.syncRules);
@@ -1039,7 +1039,7 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				if (present->pid == arg) {
 					list_del(&present->list);
 					kfree(present);
-					if (g_logRules.incHead.head.next = &g_logRules.incHead.head) {
+					if (g_logRules.incHead.head.next == &g_logRules.incHead.head) {
 						g_logRules.incHead.onOf = 0;
 					}
 					up_write(&g_logRules.syncRules);
