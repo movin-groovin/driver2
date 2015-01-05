@@ -9,13 +9,13 @@ import sys,\
 
 
 # Global variables
-EXCLUDE_PID = 5000
-INCLUDE_PID = 5001
+ADD_EXCLUDE_PID = 5000
+ADD_INCLUDE_PID = 5001
 STOP_LOGGING = 5002
 CONTINUE_LOGGING = 5003
 CLEAR_RULES = 5004
-DELETE_FROM_EXCLUDE = 5005
-DELETE_FROM_INCLUDE = 5006
+DELETE_EXCLUDE_PID = 5005
+DELETE_INCLUDE_PID = 5006
 TRUNCATE_LOG_FILE = 5007
 ADD_EXEC_NAME_MASK = 5008
 ADD_FILE_NAME_MASK = 5009
@@ -36,15 +36,11 @@ def CheckRoot():
 def SendCommand(fd, cmd, arg = None):
 	try:
 		if arg:
-			# if ok - return 0
-			try:
-				arg = int(arg)
-			except ValueError:
-				# arg is a file's name
-				pass
+			# if ok - return 0 or string had passed at arg
 			return fcntl.ioctl(fd, int(cmd), arg)
 		else:
-			return fcntl.ioctl(fd, int(cmd)) # if ok - return 0
+			# if ok - return 0 or string had passed at arg
+			return fcntl.ioctl(fd, int(cmd)) 
 	except IOError as Exc:
 		print Exc
 		return -1
@@ -60,7 +56,7 @@ def PrintKeyInfo():
 		"--clear - clear all rules that have been added before (logging all processes)\n"\
 		"--delep - delete process or processes from exclude group\n"\
 		"--delip - delete process or processes from include include\n"\
-		"-t - truncate size of the log file to zero bytes"\
+		"-t - truncate size of the log file to zero bytes\n"\
 		"--adden - add executable name for filtering by process exec name\n"\
 		"--addfn - add file name for filtering by file name\n"\
 		"--delen - delete executable name from filtering by process exec name\n"\
@@ -71,18 +67,18 @@ def PrintKeyInfo():
 def GetCommand(par):
 	cmd = 0
 	
-	if par == '--addep': cmd = EXCLUDE_PID
-	elif par == '--addip': cmd = INCLUDE_PID
+	if par == '--addep': cmd = ADD_EXCLUDE_PID
+	elif par == '--addip': cmd = ADD_INCLUDE_PID
 	elif par == '-s': cmd = STOP_LOGGING
 	elif par == '-c': cmd = CONTINUE_LOGGING
 	elif par == '--clear': cmd = CLEAR_RULES
-	elif par == '--delep': cmd = DELETE_FROM_EXCLUDE
-	elif par == '--delip': cmd = DELETE_FROM_INCLUDE
+	elif par == '--delep': cmd = DELETE_EXCLUDE_PID
+	elif par == '--delip': cmd = DELETE_INCLUDE_PID
 	elif par == '-t': cmd = TRUNCATE_LOG_FILE
 	elif par == '--adden': cmd = ADD_EXEC_NAME_MASK
 	elif par == '--addfn': cmd = ADD_FILE_NAME_MASK
 	elif par == '--delen': cmd = DELETE_EXEC_NAME_MASK
-	elif par == '--delfn': cmd = ELETE_FILE_NAME_MASK
+	elif par == '--delfn': cmd = DELETE_FILE_NAME_MASK
 	
 	return cmd
 
@@ -118,14 +114,19 @@ def main():
 		return 10003
 		
 	if len(sys.argv) > 2:
-		extra_args = [int(pid) for pid in sys.argv[2:]]
-		for args in extra_args:
-			ret = SendCommand(fDev, cmd, args)
-			if ret: break
+		for arg in sys.argv[2:]:
+			if cmd == ADD_EXEC_NAME_MASK or cmd == ADD_FILE_NAME_MASK or\
+			       cmd == DELETE_EXEC_NAME_MASK or cmd == DELETE_FILE_NAME_MASK:
+				pass
+			else:
+				arg = int(arg)
+			ret = SendCommand(fDev, cmd, arg)
+			if ret:
+				break
 	else:
 		ret = SendCommand(fDev, cmd)
 	
-	if not ret:
+	if not -1 == ret:
 		print ("Command has performed successfully")
 	else:
 		print ("Has happened an error")

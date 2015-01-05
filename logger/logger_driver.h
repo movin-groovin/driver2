@@ -94,7 +94,7 @@ struct RULES_ENTRY_PID {
 };
 
 struct RULES_ENTRY_NAME {
-	char name[2 * PATH_MAX + 2];
+	char name[2 * PATH_MAX + 2 * 2];
 	struct list_head list;
 };
 

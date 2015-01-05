@@ -1196,8 +1196,8 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 	
 	
 	if (
-		(cmd == EXCLUDE_PID || cmd == INCLUDE_PID || 
-		 cmd == DELETE_FROM_EXCLUDE || cmd == DELETE_FROM_INCLUDE) && 
+		(cmd == ADD_EXCLUDE_PID || cmd == ADD_INCLUDE_PID || 
+		 cmd == DELETE_EXCLUDE_PID || cmd == DELETE_INCLUDE_PID) &&
 		(arg >= PID_MAX_LIMIT || !arg)
 	) {
 		return -EINVAL;
@@ -1206,7 +1206,7 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 	down_write(&g_logRules.syncRules);
 	
 	switch(cmd) {
-		case EXCLUDE_PID:
+		case ADD_EXCLUDE_PID:
 				if (g_logRules.excHeadPids.num >= MAX_NUM_RULES) {
 					return -EINVAL;
 				}
@@ -1225,7 +1225,7 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				}
 				break;
 		
-		case INCLUDE_PID:
+		case ADD_INCLUDE_PID:
 				if (g_logRules.incHeadPids.num >= MAX_NUM_RULES) {
 					return -EINVAL;
 				}
@@ -1289,7 +1289,7 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				
 				break;
 		
-		case DELETE_FROM_EXCLUDE:
+		case DELETE_EXCLUDE_PID:
 				list_for_each_entry(present, &g_logRules.excHeadPids.head, list) {
 					if (present->pid == arg) {
 						list_del(&present->list);
@@ -1305,7 +1305,7 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				ret = -EINVAL;
 				break;
 		
-		case DELETE_FROM_INCLUDE:
+		case DELETE_INCLUDE_PID:
 				list_for_each_entry(present, &g_logRules.incHeadPids.head, list) {
 					if (present->pid == arg) {
 						list_del(&present->list);
@@ -1333,13 +1333,16 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				break;
 		
 		case ADD_EXEC_NAME_MASK:
-				if (g_logRules.execHeadNames.num >= MAX_NUM_RULES)
-					return -EINVAL;
-				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
-					return -EINVAL;
+				if (g_logRules.execHeadNames.num >= MAX_NUM_RULES) {
+					ret = -EINVAL;
+					break;
+				}
+				if (!arg || !(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX) {
+					ret = -EINVAL;
+					break;
+				}
 				
-				entryPtrNm = kmalloc(sizeof (struct RULES_ENTRY_NAME), GFP_KERNEL);
-				if (!entryPtrNm) {
+				if (!(entryPtrNm = kmalloc(sizeof (struct RULES_ENTRY_NAME), GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
 					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
@@ -1359,13 +1362,16 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				break;
 		
 		case ADD_FILE_NAME_MASK:
-				if (g_logRules.fileHeadNames.num >= MAX_NUM_RULES)
-					return -EINVAL;
-				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
-					return -EINVAL;
+				if (g_logRules.fileHeadNames.num >= MAX_NUM_RULES) {
+					ret = -EINVAL;
+					break;
+				}
+				if (!arg || !(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX) {
+					ret = -EINVAL;
+					break;
+				}
 				
-				entryPtrNm = kmalloc(sizeof (struct RULES_ENTRY_NAME), GFP_KERNEL);
-				if (!entryPtrNm) {
+				if (!(entryPtrNm = kmalloc(sizeof (struct RULES_ENTRY_NAME), GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
 					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
@@ -1385,11 +1391,12 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				break;
 		
 		case DELETE_EXEC_NAME_MASK:
-				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
-					return -EINVAL;
+				if (!arg || !(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX) {
+					ret = -EINVAL;
+					break;
+				}
 				
-				ksMem = kmalloc(strLen + 2, GFP_KERNEL);
-				if (!ksMem) {
+				if (!(ksMem = kmalloc(strLen + 2, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
 					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
@@ -1418,11 +1425,12 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 				break;
 		
 		case DELETE_FILE_NAME_MASK:
-				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
-					return -EINVAL;
+				if (!arg || !(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX) {
+					ret = -EINVAL;
+					break;
+				}
 				
-				ksMem = kmalloc(strLen + 2, GFP_KERNEL);
-				if (!ksMem) {
+				if (!(ksMem = kmalloc(strLen + 2, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
 					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
