@@ -35,7 +35,11 @@ LOGCHECK_RULES g_logRules;
 //
 // ks is kernal space
 //
-char* GetCurrentProcessPidEuidEgid(char *ksMem, size_t size) {
+char* GetCurrentProcessPidEuidEgid(
+	char *ksMem,
+	size_t size
+)
+{
 	const size_t minSize = 128; //64 * 3 * sizeof(size_t);
 	int ret;
 	
@@ -43,6 +47,7 @@ char* GetCurrentProcessPidEuidEgid(char *ksMem, size_t size) {
 #ifdef MY_OWN_DEBUG
 		printk ("Too little buffer, at GetCurrentProcessPidEuidEgid\n");
 #endif
+		if (size > 0) ksMem[0] = '\0';
 		return NULL;
 	}
 	ret = sprintf(ksMem, "pid: %d, ", current->tgid);
@@ -59,11 +64,11 @@ char *GetStatus(
 {
 	size_t minSize = 64;
 	
-	ksMem[0] = '\0';
 	if (size < minSize) {
 #ifdef MY_OWN_DEBUG
 		printk ("Too little buffer, at GetStatus\n");
 #endif
+		if (size > 0) ksMem[0] = '\0';
 		return NULL;
 	}
 	
@@ -82,17 +87,17 @@ char* GetProcessExeFile(
 	struct task_struct *task
 )
 {
-	size_t minSize = 2 * PATH_MAX + 128;
+	size_t minSize = 2 * PATH_MAX + 256;
 	struct mm_struct *m_task;
 	char *exeName, *retPtr;
 	struct file *exeFile;
 	
 	
-	ksMem[0] = '\0';
 	if (size < minSize) {
 #ifdef MY_OWN_DEBUG
 		printk ("Too little buffer, at GetProcessExeFile\n");
 #endif
+		if (size > 0) ksMem[0] = '\0';
 		return NULL;
 	}
 	
@@ -135,8 +140,10 @@ char* GetFilenameByFd(int fd, char *ksMem, size_t size) {
 	char *fileName, *retPtr;
 	
 	
-	if (size < needMemSize)
+	if (size < needMemSize) {
+		if (size > 0) ksMem[0] = '\0';
 		return NULL;
+	}
 	
 	if (!(procFile = fget(fd))) {
 #ifdef MY_OWN_DEBUG
@@ -246,7 +253,97 @@ void PutToBufferReadWriteParams(
 	return;
 }
 
-char* GetNameFlagsModeByString(
+char* GetFileFlagsAsString(char *ksMem, size_t len, int flags) {
+	static const char *names[] = {
+		"O_ACCMODE",//	00000003
+		"O_RDONLY",//	00000000
+		"O_WRONLY",//	00000001
+		"O_RDWR",//		00000002
+		"O_CREAT",//		00000100
+		"O_EXCL",//		00000200
+		"O_NOCTTY",//	00000400
+		"O_TRUNC",//		00001000
+		"O_APPEND",//	00002000
+		"O_NONBLOCK",//	00004000
+		"O_DSYNC",//	00010000
+		"FASYNC",//	00020000
+		"O_DIRECT",//	00040000
+		"O_LARGEFILE",//	00100000
+		"O_DIRECTORY",//	00200000
+		"O_NOFOLLOW",//	00400000
+		"O_NOATIME",//	01000000
+		"O_CLOEXEC",//	02000000
+		"O_SYNC",//		(__O_SYNC|O_DSYNC); #define __O_SYNC	04000000
+		"O_PATH",//	010000000
+	};
+	size_t minLen = 512, curLen;
+	
+	if (len < minLen) {
+		if (len > 0) ksMem[0] = '\0';
+		return NULL;
+	}
+	
+	curLen = sprintf(ksMem, "0x%08X - ", flags);
+	if (flags & (~O_ACCMODE)) curLen += sprintf(ksMem + curLen, "%s, ", names[0]);
+	if (!flags) curLen += sprintf(ksMem + curLen, "%s, ", names[1]);
+	if (flags & (~O_WRONLY)) curLen += sprintf(ksMem + curLen, "%s, ", names[2]);
+	if (flags & (~O_RDWR)) curLen += sprintf(ksMem + curLen, "%s, ", names[3]);
+	if (flags & (~O_CREAT)) curLen += sprintf(ksMem + curLen, "%s, ", names[4]);
+	if (flags & (~O_EXCL)) curLen += sprintf(ksMem + curLen, "%s, ", names[5]);
+	if (flags & (~O_NOCTTY)) curLen += sprintf(ksMem + curLen, "%s, ", names[6]);
+	if (flags & (~O_TRUNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[7]);
+	if (flags & (~O_APPEND)) curLen += sprintf(ksMem + curLen, "%s, ", names[8]);
+	if (flags & (~O_NONBLOCK)) curLen += sprintf(ksMem + curLen, "%s, ", names[9]);
+	if (flags & (~O_DSYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[10]);
+	if (flags & (~FASYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[11]);
+	if (flags & (~O_DIRECT)) curLen += sprintf(ksMem + curLen, "%s, ", names[12]);
+	if (flags & (~O_LARGEFILE)) curLen += sprintf(ksMem + curLen, "%s, ", names[13]);
+	if (flags & (~O_DIRECTORY)) curLen += sprintf(ksMem + curLen, "%s, ", names[14]);
+	if (flags & (~O_NOFOLLOW)) curLen += sprintf(ksMem + curLen, "%s, ", names[15]);
+	if (flags & (~O_NOATIME)) curLen += sprintf(ksMem + curLen, "%s, ", names[16]);
+	if (flags & (~O_CLOEXEC)) curLen += sprintf(ksMem + curLen, "%s, ", names[17]);
+	if (flags & (~O_SYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[18]);
+	if (flags & (~O_PATH)) curLen += sprintf(ksMem + curLen, "%s, ", names[19]);
+	if (ksMem[curLen - 1] == ' ' && ksMem[curLen - 2] == ',') ksMem[curLen - 2] = '\0';
+	
+	return ksMem;
+}
+
+char* GetFilePermissionsAsString(char *ksMem, size_t len, umode_t mode) {
+	size_t minLen = 512, curLen;
+	static const char *names[] = {
+		"S_IRUSR",
+		"S_IWUSR",
+		"S_IXUSR",
+		"S_IRGRP",
+		"S_IWGRP",
+		"S_IXGRP",
+		"S_IROTH",
+		"S_IWOTH",
+		"S_IXOTH",
+	};
+	
+	if (len < minLen) {
+		if (len > 0) ksMem[0] = '\0';
+		return NULL;
+	}
+	
+	curLen = sprintf(ksMem, "0x%08X - ", mode);
+	if (mode & (~S_IRUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[0]);
+	if (mode & (~S_IWUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[1]);
+	if (mode & (~S_IXUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[2]);
+	if (mode & (~S_IRGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[3]);
+	if (mode & (~S_IWGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[4]);
+	if (mode & (~S_IXGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[5]);
+	if (mode & (~S_IROTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[6]);
+	if (mode & (~S_IWOTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[7]);
+	if (mode & (~S_IXOTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[8]);
+	if (ksMem[curLen - 1] == ' ' && ksMem[curLen - 2] == ',') ksMem[curLen - 2] = '\0';
+	
+	return ksMem;
+}
+
+char* GetNameFlagsModeAsString(
 	const char *fileNameInUS,
 	int flags,
 	umode_t mode,
@@ -254,13 +351,16 @@ char* GetNameFlagsModeByString(
 	size_t size
 )
 {
-	size_t minSize = 2 * PATH_MAX + 256;
-	char *bufMemory;
+	size_t minSize = 2 * PATH_MAX + 1024 + 4;
+	size_t intermBufSize = 512;
+	char *bufForFileName, *bufForFlags, *bufForMode;
 	size_t bufSize;
 	
 	
-	if (size < minSize)
+	if (size < minSize) {
+		if (size > 0) ksMem[0] = '\0';
 		return NULL;
+	}
 	
 	if ((bufSize = strlen_user(fileNameInUS)) > 2 * PATH_MAX) {
 #ifdef MY_OWN_DEBUG
@@ -268,17 +368,42 @@ char* GetNameFlagsModeByString(
 #endif
 		return NULL;
 	}
-	if (NULL == (bufMemory = kmalloc(bufSize + 16, GFP_KERNEL))) {
+	
+	if (NULL == (bufForFileName = kmalloc(bufSize + 16, GFP_KERNEL))) {
 #ifdef MY_OWN_DEBUG
-		printk ("Error of kmalloc, ret value: %p; File: %s; Line: %d\n", bufMemory, __FILE__, __LINE__);
+		printk ("Error of kmalloc, ret value: %p; File: %s; Line: %d\n", bufForFileName, __FILE__, __LINE__);
 #endif
 		return NULL;
 	}
-	copy_from_user(bufMemory, fileNameInUS, bufSize);
-	bufMemory[bufSize] = '\0';
-	sprintf(ksMem, "file: %s, flags: %08X, mode: %08X", bufMemory, flags, mode);
+	if (NULL == (bufForFlags = kmalloc(intermBufSize, GFP_KERNEL))) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error of kmalloc, ret value: %p; File: %s; Line: %d\n", bufForFlags, __FILE__, __LINE__);
+#endif
+		kfree(bufForFileName);
+		return NULL;
+	}
+	if (NULL == (bufForMode = kmalloc(intermBufSize, GFP_KERNEL))) {
+#ifdef MY_OWN_DEBUG
+		printk ("Error of kmalloc, ret value: %p; File: %s; Line: %d\n", bufForMode, __FILE__, __LINE__);
+#endif
+		kfree(bufForFlags);
+		kfree(bufForFileName);
+		return NULL;
+	}
 	
-	kfree(bufMemory);
+	copy_from_user(bufForFileName, fileNameInUS, bufSize);
+	bufForFileName[bufSize] = '\0';
+	sprintf(
+		ksMem,
+		"file: %s, flags: %s, mode: %s",
+		bufForFileName,
+		GetFileFlagsAsString(bufForFlags, intermBufSize, flags),
+		flags & (~O_CREAT) ? GetFilePermissionsAsString(bufForMode, intermBufSize, mode) : "no matter"
+	);
+	
+	kfree(bufForFileName);
+	kfree(bufForFlags);
+	kfree(bufForMode);
 	
 	
 	return ksMem;
@@ -294,8 +419,10 @@ char* GetCWDOfCurrentProcess(
 	size_t minSize = PATH_MAX * 2 + 256;
 	
 	
-	if (size < minSize)
+	if (size < minSize) {
+		if (size > 0) ksMem[0] = '\0';
 		return NULL;
+	}
 	
 	if ((bufMemory = kmalloc(minSize, GFP_KERNEL)) == NULL) {
 #ifdef MY_OWN_DEBUG
@@ -336,7 +463,7 @@ void PutToBufferOpenParams(
 		return;
 	}
 	strcpy(bufMemory, prefStr);
-	GetNameFlagsModeByString(
+	GetNameFlagsModeAsString(
 		fileName,
 		flags,
 		mode,
@@ -384,7 +511,7 @@ void PutToBufferOpenatParams(
 	else
 		GetFilenameByFd(dfd, bufMemory, needLength);
 	strcat(bufMemory, "; ");
-	GetNameFlagsModeByString(
+	GetNameFlagsModeAsString(
 		fileName,
 		flags,
 		mode,
@@ -406,8 +533,39 @@ void PutToBufferOpenatParams(
 	return;
 }
 
-int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr, pid_t pid) {
-	struct RULES_ENTRY *present;
+int CheckExecName(const char *ksmExecName, struct RULES_HEAD *rulesHead) {
+	struct RULES_ENTRY_NAME *present;
+	
+	list_for_each_entry(present, &rulesHead->head, list) {
+		if (strstr(ksmExecName, present->name)) {
+			return 1;
+		}
+	}
+	
+	return 0;
+}
+
+int CheckFileName(const char *ksmFileName, struct RULES_HEAD *rulesHead) {
+	struct RULES_ENTRY_NAME *present;
+	
+	list_for_each_entry(present, &rulesHead->head, list) {
+		if (strstr(ksmFileName, present->name)) {
+			return 1;
+		}
+	}
+	
+	return 0;
+}
+
+int CheckLogRules (
+	PLOGCHECK_RULES chkLogRulesPtr,
+	const char *ksmExecName,
+	const char *ksmFileName,
+	pid_t pid
+)
+{
+	struct RULES_ENTRY_PID *present;
+	int ret = 0;
 	
 	
 	down_read(&chkLogRulesPtr->syncRules);
@@ -415,33 +573,80 @@ int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr, pid_t pid) {
 	if (chkLogRulesPtr->stopLogging) // 3 rule
 	{
 		up_read(&chkLogRulesPtr->syncRules);
-		return 0;
-	} else if (chkLogRulesPtr->incHead.onOf) // 2 rule
+		return ret;
+	} else if (chkLogRulesPtr->incHeadPids.onOf) // 2 rule
 	{
-		list_for_each_entry(present, &chkLogRulesPtr->incHead.head, list) {
+		list_for_each_entry(present, &chkLogRulesPtr->incHeadPids.head, list) {
 			if (present->pid == pid) {
+				if (chkLogRulesPtr->execHeadNames.onOf && chkLogRulesPtr->fileHeadNames.onOf)
+				{
+					ret = CheckExecName(ksmExecName, &chkLogRulesPtr->execHeadNames) &&
+						  CheckFileName(ksmFileName, &chkLogRulesPtr->fileHeadNames);
+				}
+				else if (chkLogRulesPtr->fileHeadNames.onOf) {
+					ret = CheckFileName(ksmFileName, &chkLogRulesPtr->fileHeadNames);
+				}
+				else if (chkLogRulesPtr->execHeadNames.onOf) {
+					ret = CheckExecName(ksmExecName, &chkLogRulesPtr->execHeadNames);
+				}
+				else {
+					ret = 1; // we don't check exec and file names
+				}
+				
 				up_read(&chkLogRulesPtr->syncRules);
-				return 1;
+				return ret;
 			}
 		}
 		up_read(&chkLogRulesPtr->syncRules);
-		return 0;
-	} else if (chkLogRulesPtr->excHead.onOf) // 1 rule
+		return ret;
+	} else if (chkLogRulesPtr->excHeadPids.onOf) // 1 rule
 	{
-		list_for_each_entry(present, &chkLogRulesPtr->excHead.head, list) {
+		list_for_each_entry(present, &chkLogRulesPtr->excHeadPids.head, list) {
 			if (present->pid == pid) {
 				up_read(&chkLogRulesPtr->syncRules);
-				return 0;
+				return ret;
 			}
 		}
+		
+		if (chkLogRulesPtr->execHeadNames.onOf && chkLogRulesPtr->fileHeadNames.onOf)
+		{
+			ret = CheckExecName(ksmExecName, &chkLogRulesPtr->execHeadNames) &&
+				  CheckFileName(ksmFileName, &chkLogRulesPtr->fileHeadNames);
+		}
+		else if (chkLogRulesPtr->fileHeadNames.onOf) {
+			ret = CheckFileName(ksmFileName, &chkLogRulesPtr->fileHeadNames);
+		}
+		else if (chkLogRulesPtr->execHeadNames.onOf) {
+			ret = CheckExecName(ksmExecName, &chkLogRulesPtr->execHeadNames);
+		}
+		else {
+			ret = 1; // we don't check exec and file names
+		}
+				
 		up_read(&chkLogRulesPtr->syncRules);
-		return 1;
+		return ret;
 	}
+	
 	// default rule
+	if (chkLogRulesPtr->execHeadNames.onOf && chkLogRulesPtr->fileHeadNames.onOf)
+	{
+		ret = CheckExecName(ksmExecName, &chkLogRulesPtr->execHeadNames) &&
+			  CheckFileName(ksmFileName, &chkLogRulesPtr->fileHeadNames);
+	}
+	else if (chkLogRulesPtr->fileHeadNames.onOf) {
+		ret = CheckFileName(ksmFileName, &chkLogRulesPtr->fileHeadNames);
+	}
+	else if (chkLogRulesPtr->execHeadNames.onOf) {
+		ret = CheckExecName(ksmExecName, &chkLogRulesPtr->execHeadNames);
+	}
+	else {
+		ret = 1; // we don't check exec and file names
+	}
+	
 	up_read(&chkLogRulesPtr->syncRules);
 	
 	
-	return 1;
+	return ret;
 }
 
 // ===========================================
@@ -449,21 +654,33 @@ int CheckLogRules (PLOGCHECK_RULES chkLogRulesPtr, pid_t pid) {
 // ===========================================
 
 long NewOpen (const char *fileName, int flags, umode_t mode) {
-	long ret;
+	long ret, strLen;
+	char *execName, *flName;
 	
-	
-#ifdef MY_OWN_DEBUG
-	//printk ("Intercepted function sys_open\n");
-#endif
 	
 	atomic64_inc (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
 	if (g_sysServArr[SYS_OPEN_NUM].sysPtrOld) {
 		ret = ((OPEN_P)(g_sysServArr[SYS_OPEN_NUM].sysPtrOld)) (fileName, flags, mode);
+
+		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
-		//printk ("Number of counter at OPEN: %ld\n", atomic64_read (& g_sysServArr[SYS_OPEN_NUM].numOfCalls));
+			printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
-		if (CheckLogRules (&g_logRules, current->tgid))
-			PutToBufferOpenParams(fileName, flags, mode, ret);
+		} else {
+			execName[0] = flName[0] = '\0';
+			GetProcessExeFile(execName, 2 * PATH_MAX, current);
+			if ((strLen = strlen_user(fileName)) && strLen <= 2 * PATH_MAX) {
+				copy_from_user(flName, fileName, strLen);
+			}
+			flName[strLen] = '\0';
+			
+			if (CheckLogRules (&g_logRules, execName, flName, current->tgid))
+				PutToBufferOpenParams(fileName, flags, mode, ret);
+		}
+		if (execName) kfree(execName);
+		if (flName) kfree(flName);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPEN_NUM].numOfCalls);
 		
@@ -477,25 +694,36 @@ long NewOpen (const char *fileName, int flags, umode_t mode) {
 		BUG_ON(1 == 1);
 		return -EIO;
 	}
-	
-	// return;
 }
+
 long NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
-	long ret;
+	long ret, strLen;
+	char *execName, *flName;
 	
-	
-#ifdef MY_OWN_DEBUG
-	//printk ("Intercepted function sys_openat\n");
-#endif
 	
 	atomic64_inc (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
 	if (g_sysServArr[SYS_OPENAT_NUM].sysPtrOld) {
 		ret = ((OPENAT_P)(g_sysServArr[SYS_OPENAT_NUM].sysPtrOld)) (dfd, fileName, flags, mode);
+		
+		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
-		//printk ("Number of counter at OPENAT: %ld\n", atomic64_read (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls));
+			printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
-		if (CheckLogRules (&g_logRules, current->tgid))
-			PutToBufferOpenatParams(dfd, fileName, flags, mode, ret);
+		} else {
+			execName[0] = flName[0] = '\0';
+			GetProcessExeFile(execName, 2 * PATH_MAX, current);
+			if ((strLen = strlen_user(fileName)) && strLen <= 2 * PATH_MAX) {
+				copy_from_user(flName, fileName, strLen);
+			}
+			flName[strLen] = '\0';
+			
+			if (CheckLogRules (&g_logRules, execName, flName, current->tgid))
+				PutToBufferOpenatParams(dfd, fileName, flags, mode, ret);
+		}
+		if (execName) kfree(execName);
+		if (flName) kfree(flName);
 		
 		atomic64_dec (& g_sysServArr[SYS_OPENAT_NUM].numOfCalls);
 		
@@ -509,26 +737,33 @@ long NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 		BUG_ON(1 == 1);
 		return -EIO;
 	}
-	
-	// return;
 }
 
 long NewWrite (unsigned int fd, const char *buf, size_t count) {
 	long ret;
+	char *execName, *flName;
 	
-	
-#ifdef MY_OWN_DEBUG
-	//printk ("Intercepted function sys_write\n");
-#endif
 	
 	atomic64_inc (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
 	if (g_sysServArr[SYS_WRITE_NUM].sysPtrOld) {
 		ret = ((WRITE_P)(g_sysServArr[SYS_WRITE_NUM].sysPtrOld)) (fd, buf, count);
+		
+		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
-		//printk ("Number of counter at WRITE: %ld\n", atomic64_read (& g_sysServArr[SYS_WRITE_NUM].numOfCalls));
+			printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
-		if (CheckLogRules (&g_logRules, current->tgid))
-			PutToBufferReadWriteParams("Write call at file", fd, ret);
+		} else {
+			execName[0] = flName[0] = '\0';
+			GetProcessExeFile(execName, 2 * PATH_MAX, current);
+			GetFilenameByFd(fd, flName, 2 * PATH_MAX);
+			
+			if (CheckLogRules (&g_logRules, execName, flName, current->tgid))
+				PutToBufferReadWriteParams("Write call at file", fd, ret);
+		}
+		if (execName) kfree(execName);
+		if (flName) kfree(flName);
 		
 		atomic64_dec (& g_sysServArr[SYS_WRITE_NUM].numOfCalls);
 		
@@ -542,26 +777,33 @@ long NewWrite (unsigned int fd, const char *buf, size_t count) {
 		BUG_ON(1 == 1);
 		return -EIO;
 	}
-	
-	// return;
 }
 
 long NewRead (unsigned int fd, char *buf, size_t count) {
 	long ret;
+	char *execName, *flName;
 	
-	
-#ifdef MY_OWN_DEBUG
-	//printk ("Intercepted function sys_read\n");
-#endif
 	
 	atomic64_inc (& g_sysServArr[SYS_READ_NUM].numOfCalls);
 	if (g_sysServArr[SYS_READ_NUM].sysPtrOld) {
 		ret = ((READ_P)(g_sysServArr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
+		
+		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
-		//printk ("Number of counter at READ: %ld\n", atomic64_read (& g_sysServArr[SYS_READ_NUM].numOfCalls));
+			printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
-		if (CheckLogRules (&g_logRules, current->tgid))
-			PutToBufferReadWriteParams("Read call at file", fd, ret);
+		} else {
+			execName[0] = flName[0] = '\0';
+			GetProcessExeFile(execName, 2 * PATH_MAX, current);
+			GetFilenameByFd(fd, flName, 2 * PATH_MAX);
+			
+			if (CheckLogRules (&g_logRules, execName, flName, current->tgid))
+				PutToBufferReadWriteParams("Read call at file", fd, ret);
+		}
+		if (execName) kfree(execName);
+		if (flName) kfree(flName);
 		
 		atomic64_dec (& g_sysServArr[SYS_READ_NUM].numOfCalls);
 		
@@ -575,8 +817,6 @@ long NewRead (unsigned int fd, char *buf, size_t count) {
 		BUG_ON(1 == 1);
 		return -EIO;
 	}
-	
-	// return;
 }
 
 //
@@ -946,14 +1186,18 @@ int ioctlClose (struct inode *i, struct file *f) {
 }
 
 long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
-	struct RULES_ENTRY *entryPtr;
-	struct RULES_ENTRY *next, *present;
+	struct RULES_ENTRY_PID *entryPtr;
+	struct RULES_ENTRY_PID *next, *present;
+	struct RULES_ENTRY_NAME *entryPtrNm;
+	struct RULES_ENTRY_NAME *nextNm, *presentNm;
 	long ret = 0;
+	size_t strLen;
+	char *ksMem;
 	
 	
 	if (
 		(cmd == EXCLUDE_PID || cmd == INCLUDE_PID || 
-			cmd == DELETE_FROM_EXCLUDE || cmd == DELETE_FROM_INCLUDE) && 
+		 cmd == DELETE_FROM_EXCLUDE || cmd == DELETE_FROM_INCLUDE) && 
 		(arg >= PID_MAX_LIMIT || !arg)
 	) {
 		return -EINVAL;
@@ -963,107 +1207,251 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 	
 	switch(cmd) {
 		case EXCLUDE_PID:
-			entryPtr = kmalloc(sizeof (struct RULES_ENTRY), GFP_KERNEL);
-			if (!entryPtr) {
+				if (g_logRules.excHeadPids.num >= MAX_NUM_RULES) {
+					return -EINVAL;
+				}
+				
+				entryPtr = kmalloc(sizeof (struct RULES_ENTRY_PID), GFP_KERNEL);
+				if (!entryPtr) {
 #ifdef MY_OWN_DEBUG
-				printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", entryPtr, __FILE__, __LINE__);
+					printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", entryPtr, __FILE__, __LINE__);
 #endif
-				ret = -ENOMEM;
-			} else {
-				entryPtr->pid = arg;
-				g_logRules.excHead.onOf = 1;
-				g_logRules.excHead.num += 1;
-				list_add(&entryPtr->list, &g_logRules.excHead.head);
-			}
-			break;
+					ret = -ENOMEM;
+				} else {
+					entryPtr->pid = arg;
+					g_logRules.excHeadPids.onOf = 1;
+					g_logRules.excHeadPids.num += 1;
+					list_add(&entryPtr->list, &g_logRules.excHeadPids.head);
+				}
+				break;
 		
 		case INCLUDE_PID:
-			entryPtr = kmalloc(sizeof (struct RULES_ENTRY), GFP_KERNEL);
-			if (!entryPtr) {
+				if (g_logRules.incHeadPids.num >= MAX_NUM_RULES) {
+					return -EINVAL;
+				}
+				
+				entryPtr = kmalloc(sizeof (struct RULES_ENTRY_PID), GFP_KERNEL);
+				if (!entryPtr) {
 #ifdef MY_OWN_DEBUG
-				printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", entryPtr, __FILE__, __LINE__);
+					printk ("Error of kmalloc, ret: %p; File: %s; Line: %d\n", entryPtr, __FILE__, __LINE__);
 #endif
-				ret = -ENOMEM;
-			} else {
-				entryPtr->pid = arg;
-				g_logRules.incHead.onOf = 1;
-				g_logRules.incHead.num += 1;
-				list_add(&entryPtr->list, &g_logRules.incHead.head);
-			}
-			break;
+					ret = -ENOMEM;
+				} else {
+					entryPtr->pid = arg;
+					g_logRules.incHeadPids.onOf = 1;
+					g_logRules.incHeadPids.num += 1;
+					list_add(&entryPtr->list, &g_logRules.incHeadPids.head);
+				}
+				break;
 		
 		case STOP_LOGGING:
-			g_logRules.stopLogging = 1;
-			break;
+				g_logRules.stopLogging = 1;
+				break;
 		
 		case CONTINUE_LOGGING:
-			g_logRules.stopLogging = 0;
-			break;
+				g_logRules.stopLogging = 0;
+				break;
 		
 		case CLEAR_RULES:
-			g_logRules.stopLogging = 0;
-			
-			list_for_each_entry_safe(present, next, &g_logRules.excHead.head, list) {
-				list_del(&present->list);
-				kfree(present);
-			}
-			g_logRules.excHead.num = 0;
-			g_logRules.excHead.onOf = 0;
-			
-			list_for_each_entry_safe(present, next, &g_logRules.incHead.head, list) {
-				list_del(&present->list);
-				kfree(present);
-			}
-			g_logRules.incHead.num = 0;
-			g_logRules.incHead.onOf = 0;
-			
-			break;
+				g_logRules.stopLogging = 0;
+				
+				// queue of excluding pids
+				list_for_each_entry_safe(present, next, &g_logRules.excHeadPids.head, list) {
+					list_del(&present->list);
+					kfree(present);
+				}
+				g_logRules.excHeadPids.num = 0;
+				g_logRules.excHeadPids.onOf = 0;
+				
+				// queue of including pids
+				list_for_each_entry_safe(present, next, &g_logRules.incHeadPids.head, list) {
+					list_del(&present->list);
+					kfree(present);
+				}
+				g_logRules.incHeadPids.num = 0;
+				g_logRules.incHeadPids.onOf = 0;
+				
+				// executable names
+				list_for_each_entry_safe(presentNm, nextNm, &g_logRules.execHeadNames.head, list) {
+					list_del(&presentNm->list);
+					kfree(presentNm);
+				}
+				g_logRules.execHeadNames.num = 0;
+				g_logRules.execHeadNames.onOf = 0;
+				
+				// file names
+				list_for_each_entry_safe(presentNm, nextNm, &g_logRules.fileHeadNames.head, list) {
+					list_del(&presentNm->list);
+					kfree(presentNm);
+				}
+				g_logRules.fileHeadNames.num = 0;
+				g_logRules.fileHeadNames.onOf = 0;
+				
+				break;
 		
 		case DELETE_FROM_EXCLUDE:
-			list_for_each_entry(present, &g_logRules.excHead.head, list) {
-				if (present->pid == arg) {
-					list_del(&present->list);
-					kfree(present);
-					g_logRules.excHead.num -= 1;
-					if (g_logRules.excHead.head.next == &g_logRules.excHead.head) {
-						g_logRules.excHead.onOf = 0;
+				list_for_each_entry(present, &g_logRules.excHeadPids.head, list) {
+					if (present->pid == arg) {
+						list_del(&present->list);
+						kfree(present);
+						g_logRules.excHeadPids.num -= 1;
+						if (g_logRules.excHeadPids.head.next == &g_logRules.excHeadPids.head) {
+							g_logRules.excHeadPids.onOf = 0;
+						}
+						up_write(&g_logRules.syncRules);
+						return ret;
 					}
-					up_write(&g_logRules.syncRules);
-					return ret;
 				}
-			}
-			ret = -EINVAL;
-			break;
+				ret = -EINVAL;
+				break;
 		
 		case DELETE_FROM_INCLUDE:
-			list_for_each_entry(present, &g_logRules.incHead.head, list) {
-				if (present->pid == arg) {
-					list_del(&present->list);
-					kfree(present);
-					g_logRules.incHead.num -= 1;
-					if (g_logRules.incHead.head.next == &g_logRules.incHead.head) {
-						g_logRules.incHead.onOf = 0;
+				list_for_each_entry(present, &g_logRules.incHeadPids.head, list) {
+					if (present->pid == arg) {
+						list_del(&present->list);
+						kfree(present);
+						g_logRules.incHeadPids.num -= 1;
+						if (g_logRules.incHeadPids.head.next == &g_logRules.incHeadPids.head) {
+							g_logRules.incHeadPids.onOf = 0;
+						}
+						up_write(&g_logRules.syncRules);
+						return ret;
 					}
+				}
+				ret = -EINVAL;
+				break;
+			
+		case TRUNCATE_LOG_FILE:
+				ret = TruncateFile(g_logFile, 0);
+				if (ret) {
+#ifdef MY_OWN_DEBUG
+					printk("Error of TruncateFile, ret: %d; File: %s; Line: %d\n", (int)ret, __FILE__, __LINE__);
+#endif
 					up_write(&g_logRules.syncRules);
 					return ret;
 				}
-			}
-			ret = -EINVAL;
-			break;
-			
-		case TRUNCATE_LOG_FILE:
-			ret = TruncateFile(g_logFile, 0);
-			if (ret) {
+				break;
+		
+		case ADD_EXEC_NAME_MASK:
+				if (g_logRules.execHeadNames.num >= MAX_NUM_RULES)
+					return -EINVAL;
+				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
+					return -EINVAL;
+				
+				entryPtrNm = kmalloc(sizeof (struct RULES_ENTRY_NAME), GFP_KERNEL);
+				if (!entryPtrNm) {
 #ifdef MY_OWN_DEBUG
-				printk("Error of TruncateFile, ret: %d; File: %s; Line: %d\n", (int)ret, __FILE__, __LINE__);
+					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
-				up_write(&g_logRules.syncRules);
-				return ret;
-			}
-			break;
+					ret = -ENOMEM;
+				} else {
+					if (copy_from_user(entryPtrNm->name, (void*)arg, strLen)) {
+						kfree(entryPtrNm);
+						ret = -EFAULT;
+						break;
+					}
+					entryPtrNm->name[strLen] = '\0';
+					
+					g_logRules.execHeadNames.onOf = 1;
+					g_logRules.execHeadNames.num += 1;
+					list_add(&entryPtrNm->list, &g_logRules.execHeadNames.head);
+				}
+				break;
+		
+		case ADD_FILE_NAME_MASK:
+				if (g_logRules.fileHeadNames.num >= MAX_NUM_RULES)
+					return -EINVAL;
+				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
+					return -EINVAL;
+				
+				entryPtrNm = kmalloc(sizeof (struct RULES_ENTRY_NAME), GFP_KERNEL);
+				if (!entryPtrNm) {
+#ifdef MY_OWN_DEBUG
+					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
+#endif
+					ret = -ENOMEM;
+				} else {
+					if (copy_from_user(entryPtrNm->name, (void*)arg, strLen)) {
+						kfree(entryPtrNm);
+						ret = -EFAULT;
+						break;
+					}
+					entryPtrNm->name[strLen] = '\0';
+					
+					g_logRules.fileHeadNames.onOf = 1;
+					g_logRules.fileHeadNames.num += 1;
+					list_add(&entryPtrNm->list, &g_logRules.fileHeadNames.head);
+				}
+				break;
+		
+		case DELETE_EXEC_NAME_MASK:
+				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
+					return -EINVAL;
+				
+				ksMem = kmalloc(strLen + 2, GFP_KERNEL);
+				if (!ksMem) {
+#ifdef MY_OWN_DEBUG
+					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
+#endif
+					ret = -ENOMEM;
+					break;
+				} else {
+					copy_from_user(ksMem, (void*)arg, strLen);
+					ksMem[strLen] = '\0';
+					
+					list_for_each_entry(presentNm, &g_logRules.execHeadNames.head, list) {
+						if (!strcmp(presentNm->name, ksMem)) {
+							list_del(&presentNm->list);
+							kfree(presentNm);
+							g_logRules.execHeadNames.num -= 1;
+							if (g_logRules.execHeadNames.head.next == &g_logRules.execHeadNames.head) {
+								g_logRules.execHeadNames.onOf = 0;
+							}
+							kfree(ksMem);
+							up_write(&g_logRules.syncRules);
+							return ret;
+						}
+					}
+					kfree(ksMem);
+				}
+				ret = -EINVAL;
+				break;
+		
+		case DELETE_FILE_NAME_MASK:
+				if (!(strLen = strlen_user((void*)arg)) || strLen > 2 * PATH_MAX)
+					return -EINVAL;
+				
+				ksMem = kmalloc(strLen + 2, GFP_KERNEL);
+				if (!ksMem) {
+#ifdef MY_OWN_DEBUG
+					printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
+#endif
+					ret = -ENOMEM;
+					break;
+				} else {
+					copy_from_user(ksMem, (void*)arg, strLen);
+					ksMem[strLen] = '\0';
+					
+					list_for_each_entry(presentNm, &g_logRules.fileHeadNames.head, list) {
+						if (!strcmp(presentNm->name, ksMem)) {
+							list_del(&presentNm->list);
+							kfree(presentNm);
+							g_logRules.fileHeadNames.num -= 1;
+							if (g_logRules.fileHeadNames.head.next == &g_logRules.fileHeadNames.head) {
+								g_logRules.fileHeadNames.onOf = 0;
+							}
+							kfree(ksMem);
+							up_write(&g_logRules.syncRules);
+							return ret;
+						}
+					}
+					kfree(ksMem);
+				}
+				ret = -EINVAL;
+				break;
 		
 		default:
-			ret = -EINVAL;
+				ret = -EINVAL;
 	}
 	
 	up_write(&g_logRules.syncRules);
@@ -1075,26 +1463,34 @@ long ioctlIoctl(struct file *f, unsigned int cmd, unsigned long arg) {
 void InitLoggingRules(PLOGCHECK_RULES logChkRulesPtr) {
 	init_rwsem(&logChkRulesPtr->syncRules);
 	
-	logChkRulesPtr->excHead.onOf = 0;
-	logChkRulesPtr->excHead.num = 0;
-	INIT_LIST_HEAD(&logChkRulesPtr->excHead.head);
+	logChkRulesPtr->excHeadPids.onOf = 0;
+	logChkRulesPtr->excHeadPids.num = 0;
+	INIT_LIST_HEAD(&logChkRulesPtr->excHeadPids.head);
 	
-	logChkRulesPtr->incHead.onOf = 0;
-	logChkRulesPtr->incHead.num = 0;
-	INIT_LIST_HEAD(&logChkRulesPtr->incHead.head);
+	logChkRulesPtr->incHeadPids.onOf = 0;
+	logChkRulesPtr->incHeadPids.num = 0;
+	INIT_LIST_HEAD(&logChkRulesPtr->incHeadPids.head);
+	
+	logChkRulesPtr->execHeadNames.onOf = 0;
+	logChkRulesPtr->execHeadNames.num = 0;
+	INIT_LIST_HEAD(&logChkRulesPtr->execHeadNames.head);
+	
+	logChkRulesPtr->fileHeadNames.onOf = 0;
+	logChkRulesPtr->fileHeadNames.num = 0;
+	INIT_LIST_HEAD(&logChkRulesPtr->fileHeadNames.head);
 	
 	return;
 }
 
 void ReleaseLoggingRules(PLOGCHECK_RULES logChkRulesPtr) {
-	struct RULES_ENTRY *next, *cur;
+	struct RULES_ENTRY_PID *next, *cur;
 	
 	down_write(&logChkRulesPtr->syncRules);
-	list_for_each_entry_safe(cur, next, &logChkRulesPtr->excHead.head, list) {
+	list_for_each_entry_safe(cur, next, &logChkRulesPtr->excHeadPids.head, list) {
 		list_del(&cur->list);
 		kfree(cur);
 	}
-	list_for_each_entry_safe(cur, next, &logChkRulesPtr->incHead.head, list) {
+	list_for_each_entry_safe(cur, next, &logChkRulesPtr->incHeadPids.head, list) {
 		list_del(&cur->list);
 		kfree(cur);
 	}

@@ -88,8 +88,13 @@ typedef struct _IOCTL_INTERFACE {
 
 
 
-struct RULES_ENTRY {
+struct RULES_ENTRY_PID {
 	pid_t pid;
+	struct list_head list;
+};
+
+struct RULES_ENTRY_NAME {
+	char name[2 * PATH_MAX + 2];
 	struct list_head list;
 };
 
@@ -101,8 +106,10 @@ struct RULES_HEAD {
 
 typedef struct _LOGCHECK_RULES {
 	struct rw_semaphore syncRules;
-	struct RULES_HEAD excHead;
-	struct RULES_HEAD incHead;
+	struct RULES_HEAD excHeadPids;
+	struct RULES_HEAD incHeadPids;
+	struct RULES_HEAD execHeadNames;
+	struct RULES_HEAD fileHeadNames;
 	int stopLogging;
 } LOGCHECK_RULES, *PLOGCHECK_RULES;
 
