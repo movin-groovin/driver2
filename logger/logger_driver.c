@@ -662,7 +662,7 @@ long NewOpen (const char *fileName, int flags, umode_t mode) {
 	if (g_sysServArr[SYS_OPEN_NUM].sysPtrOld) {
 		ret = ((OPEN_P)(g_sysServArr[SYS_OPEN_NUM].sysPtrOld)) (fileName, flags, mode);
 
-		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		execName = kmalloc(2 * PATH_MAX + 256, GFP_KERNEL);
 		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
 		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
@@ -670,7 +670,7 @@ long NewOpen (const char *fileName, int flags, umode_t mode) {
 #endif
 		} else {
 			execName[0] = flName[0] = '\0';
-			GetProcessExeFile(execName, 2 * PATH_MAX, current);
+			GetProcessExeFile(execName, 2 * PATH_MAX + 256, current);
 			if ((strLen = strlen_user(fileName)) && strLen <= 2 * PATH_MAX) {
 				copy_from_user(flName, fileName, strLen);
 			}
@@ -705,7 +705,7 @@ long NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 	if (g_sysServArr[SYS_OPENAT_NUM].sysPtrOld) {
 		ret = ((OPENAT_P)(g_sysServArr[SYS_OPENAT_NUM].sysPtrOld)) (dfd, fileName, flags, mode);
 		
-		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		execName = kmalloc(2 * PATH_MAX + 256, GFP_KERNEL);
 		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
 		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
@@ -713,7 +713,7 @@ long NewOpenAt (int dfd, const char *fileName, int flags, umode_t mode) {
 #endif
 		} else {
 			execName[0] = flName[0] = '\0';
-			GetProcessExeFile(execName, 2 * PATH_MAX, current);
+			GetProcessExeFile(execName, 2 * PATH_MAX + 256, current);
 			if ((strLen = strlen_user(fileName)) && strLen <= 2 * PATH_MAX) {
 				copy_from_user(flName, fileName, strLen);
 			}
@@ -748,16 +748,16 @@ long NewWrite (unsigned int fd, const char *buf, size_t count) {
 	if (g_sysServArr[SYS_WRITE_NUM].sysPtrOld) {
 		ret = ((WRITE_P)(g_sysServArr[SYS_WRITE_NUM].sysPtrOld)) (fd, buf, count);
 		
-		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
-		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		execName = kmalloc(2 * PATH_MAX + 256, GFP_KERNEL);
+		flName = kmalloc(2 * PATH_MAX + 256, GFP_KERNEL);
 		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
 			printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
 		} else {
 			execName[0] = flName[0] = '\0';
-			GetProcessExeFile(execName, 2 * PATH_MAX, current);
-			GetFilenameByFd(fd, flName, 2 * PATH_MAX);
+			GetProcessExeFile(execName, 2 * PATH_MAX + 256, current);
+			GetFilenameByFd(fd, flName, 2 * PATH_MAX + 256);
 			
 			if (CheckLogRules (&g_logRules, execName, flName, current->tgid))
 				PutToBufferReadWriteParams("Write call at file", fd, ret);
@@ -788,16 +788,16 @@ long NewRead (unsigned int fd, char *buf, size_t count) {
 	if (g_sysServArr[SYS_READ_NUM].sysPtrOld) {
 		ret = ((READ_P)(g_sysServArr[SYS_READ_NUM].sysPtrOld)) (fd, buf, count);
 		
-		execName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
-		flName = kmalloc(2 * PATH_MAX + 2, GFP_KERNEL);
+		execName = kmalloc(2 * PATH_MAX + 256, GFP_KERNEL);
+		flName = kmalloc(2 * 2 * PATH_MAX + 256, GFP_KERNEL);
 		if (!execName || !flName) {
 #ifdef MY_OWN_DEBUG
 			printk ("Error of kmalloc, File: %s; Line: %d\n", __FILE__, __LINE__);
 #endif
 		} else {
 			execName[0] = flName[0] = '\0';
-			GetProcessExeFile(execName, 2 * PATH_MAX, current);
-			GetFilenameByFd(fd, flName, 2 * PATH_MAX);
+			GetProcessExeFile(execName, 2 * PATH_MAX + 256, current);
+			GetFilenameByFd(fd, flName, 2 * PATH_MAX + 256);
 			
 			if (CheckLogRules (&g_logRules, execName, flName, current->tgid))
 				PutToBufferReadWriteParams("Read call at file", fd, ret);
