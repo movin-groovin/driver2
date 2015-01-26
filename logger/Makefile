@@ -21,7 +21,7 @@
 # http://stackoverflow.com/questions/1184274/how-to-read-write-files-within-a-linux-kernel-module - file operations
 # 
 
-CC=gcc -std=gnu99 -g
+CC=gcc -std=gnu99
 obj-m = logger_driver.o
 KDIR = /lib/modules/$(shell uname -r)/build
 PWD = $(shell pwd)

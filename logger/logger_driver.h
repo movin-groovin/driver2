@@ -2,6 +2,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h> // including for sprintf
 #include <linux/init.h>
+#include <linux/version.h> // for LINUX_VERSION_CODE and KERNEL_VERSION (1,2,3)
 
 #include <linux/unistd.h>
 #include <linux/uaccess.h>

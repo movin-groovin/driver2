@@ -1102,6 +1102,7 @@ void CloseFile(struct file *file) {
 int TruncateFile(struct file *filePtr, loff_t len) {
 	struct iattr newAttrs;
 	struct dentry *dentryPtr;
+	struct inode *inPtr;
 	int ret;
 	
 	dentryPtr = filePtr->f_path.dentry;
@@ -1114,7 +1115,13 @@ int TruncateFile(struct file *filePtr, loff_t len) {
 	newAttrs.ia_valid |= ATTR_FILE;
 
 	mutex_lock(&dentryPtr->d_inode->i_mutex);
+	
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,2,0)
 	ret = notify_change(dentryPtr, &newAttrs);
+#else // for latter than 3.2
+	ret = notify_change(dentryPtr, &newAttrs, &inPtr);
+#endif
+
 	mutex_unlock(&dentryPtr->d_inode->i_mutex);
 	
 #ifdef MY_OWN_DEBUG
