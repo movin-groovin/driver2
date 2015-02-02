@@ -284,26 +284,26 @@ char* GetFileFlagsAsString(char *ksMem, size_t len, int flags) {
 	}
 	
 	curLen = sprintf(ksMem, "0x%08X - ", flags);
-	if (flags & (~O_ACCMODE)) curLen += sprintf(ksMem + curLen, "%s, ", names[0]);
+	if (flags & (O_ACCMODE)) curLen += sprintf(ksMem + curLen, "%s, ", names[0]);
 	if (!flags) curLen += sprintf(ksMem + curLen, "%s, ", names[1]);
-	if (flags & (~O_WRONLY)) curLen += sprintf(ksMem + curLen, "%s, ", names[2]);
-	if (flags & (~O_RDWR)) curLen += sprintf(ksMem + curLen, "%s, ", names[3]);
-	if (flags & (~O_CREAT)) curLen += sprintf(ksMem + curLen, "%s, ", names[4]);
-	if (flags & (~O_EXCL)) curLen += sprintf(ksMem + curLen, "%s, ", names[5]);
-	if (flags & (~O_NOCTTY)) curLen += sprintf(ksMem + curLen, "%s, ", names[6]);
-	if (flags & (~O_TRUNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[7]);
-	if (flags & (~O_APPEND)) curLen += sprintf(ksMem + curLen, "%s, ", names[8]);
-	if (flags & (~O_NONBLOCK)) curLen += sprintf(ksMem + curLen, "%s, ", names[9]);
-	if (flags & (~O_DSYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[10]);
-	if (flags & (~FASYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[11]);
-	if (flags & (~O_DIRECT)) curLen += sprintf(ksMem + curLen, "%s, ", names[12]);
-	if (flags & (~O_LARGEFILE)) curLen += sprintf(ksMem + curLen, "%s, ", names[13]);
-	if (flags & (~O_DIRECTORY)) curLen += sprintf(ksMem + curLen, "%s, ", names[14]);
-	if (flags & (~O_NOFOLLOW)) curLen += sprintf(ksMem + curLen, "%s, ", names[15]);
-	if (flags & (~O_NOATIME)) curLen += sprintf(ksMem + curLen, "%s, ", names[16]);
-	if (flags & (~O_CLOEXEC)) curLen += sprintf(ksMem + curLen, "%s, ", names[17]);
-	if (flags & (~O_SYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[18]);
-	if (flags & (~O_PATH)) curLen += sprintf(ksMem + curLen, "%s, ", names[19]);
+	if (flags & (O_WRONLY)) curLen += sprintf(ksMem + curLen, "%s, ", names[2]);
+	if (flags & (O_RDWR)) curLen += sprintf(ksMem + curLen, "%s, ", names[3]);
+	if (flags & (O_CREAT)) curLen += sprintf(ksMem + curLen, "%s, ", names[4]);
+	if (flags & (O_EXCL)) curLen += sprintf(ksMem + curLen, "%s, ", names[5]);
+	if (flags & (O_NOCTTY)) curLen += sprintf(ksMem + curLen, "%s, ", names[6]);
+	if (flags & (O_TRUNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[7]);
+	if (flags & (O_APPEND)) curLen += sprintf(ksMem + curLen, "%s, ", names[8]);
+	if (flags & (O_NONBLOCK)) curLen += sprintf(ksMem + curLen, "%s, ", names[9]);
+	if (flags & (O_DSYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[10]);
+	if (flags & (FASYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[11]);
+	if (flags & (O_DIRECT)) curLen += sprintf(ksMem + curLen, "%s, ", names[12]);
+	if (flags & (O_LARGEFILE)) curLen += sprintf(ksMem + curLen, "%s, ", names[13]);
+	if (flags & (O_DIRECTORY)) curLen += sprintf(ksMem + curLen, "%s, ", names[14]);
+	if (flags & (O_NOFOLLOW)) curLen += sprintf(ksMem + curLen, "%s, ", names[15]);
+	if (flags & (O_NOATIME)) curLen += sprintf(ksMem + curLen, "%s, ", names[16]);
+	if (flags & (O_CLOEXEC)) curLen += sprintf(ksMem + curLen, "%s, ", names[17]);
+	if (flags & (O_SYNC)) curLen += sprintf(ksMem + curLen, "%s, ", names[18]);
+	if (flags & (O_PATH)) curLen += sprintf(ksMem + curLen, "%s, ", names[19]);
 	if (ksMem[curLen - 1] == ' ' && ksMem[curLen - 2] == ',') ksMem[curLen - 2] = '\0';
 	
 	return ksMem;
@@ -329,15 +329,15 @@ char* GetFilePermissionsAsString(char *ksMem, size_t len, umode_t mode) {
 	}
 	
 	curLen = sprintf(ksMem, "0x%08X - ", mode);
-	if (mode & (~S_IRUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[0]);
-	if (mode & (~S_IWUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[1]);
-	if (mode & (~S_IXUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[2]);
-	if (mode & (~S_IRGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[3]);
-	if (mode & (~S_IWGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[4]);
-	if (mode & (~S_IXGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[5]);
-	if (mode & (~S_IROTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[6]);
-	if (mode & (~S_IWOTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[7]);
-	if (mode & (~S_IXOTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[8]);
+	if (mode & (S_IRUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[0]);
+	if (mode & (S_IWUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[1]);
+	if (mode & (S_IXUSR)) curLen += sprintf(ksMem + curLen, "%s, ", names[2]);
+	if (mode & (S_IRGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[3]);
+	if (mode & (S_IWGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[4]);
+	if (mode & (S_IXGRP)) curLen += sprintf(ksMem + curLen, "%s, ", names[5]);
+	if (mode & (S_IROTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[6]);
+	if (mode & (S_IWOTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[7]);
+	if (mode & (S_IXOTH)) curLen += sprintf(ksMem + curLen, "%s, ", names[8]);
 	if (ksMem[curLen - 1] == ' ' && ksMem[curLen - 2] == ',') ksMem[curLen - 2] = '\0';
 	
 	return ksMem;
@@ -430,11 +430,14 @@ char* GetCWDOfCurrentProcess(
 #endif
 		return NULL;
 	}
+	
 	spin_lock(&current->fs->lock);
 	path_get(&current->fs->pwd);
 	pwd = &current->fs->pwd;
-	retDpath = d_path(pwd, bufMemory, minSize);
 	spin_unlock(&current->fs->lock);
+	
+	retDpath = d_path(pwd, bufMemory, minSize);
+	//spin_unlock(&current->fs->lock); // was an error, we must unlock before d_path
 	sprintf(ksMem, "current work directory: %s", IS_ERR(retDpath) ? "can't get file's name" : retDpath);
 	
 	path_put(pwd);
@@ -1116,7 +1119,7 @@ int TruncateFile(struct file *filePtr, loff_t len) {
 
 	mutex_lock(&dentryPtr->d_inode->i_mutex);
 	
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,2,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,2,57)
 	ret = notify_change(dentryPtr, &newAttrs);
 #else // for latter than 3.2
 	ret = notify_change(dentryPtr, &newAttrs, &inPtr);
